@@ -11,14 +11,24 @@ REM //
 REM // SIZ_NTROOT: Path to the NT 4.5 source root (e.g. W:\trunk.x86chk)
 REM //
 
-set SIZ_NTROOT=%~dp0..\minnt
+pushd %~dp0..\minnt
+set SIZ_NTROOT=%CD%
+popd
 
 REM //
 REM // SIZ_NTTREE: Path to the NT 4.5 binary root (e.g. W:\bin)
 REM //
 
-set SIZ_NTTREE=%~dp0..\Binaries
+md %~dp0..\Binaries 
+pushd %~dp0..\Binaries
+set SIZ_NTTREE=%CD%
+popd
 if not exist %SIZ_NTTREE% md %SIZ_NTTREE%
+
+REM //
+REM // Set global PATH so that we don't get interference from local tools
+REM //
+set PATH=%SystemRoot%\System32;%SystemRoot%
 
 REM //
 REM // SIZ_NTARCH: Target build architecture [x86, amd64, arm, mips, alpha, ppc]
