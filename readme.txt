@@ -155,19 +155,19 @@ There are various "flavours" of NTVDM that can be built:
    Please note that you need Windows XP for building.
    Build instructions in: doc\old-src.txt
  * HAXM
-   This is basically old-src, but instead of using the emulated
-   CCPU, it uses HAXM VT-x hardware accelleration (CPU needs to
-   support it), so it is significally faster in textmode.
+   Instead of using the emulated CCPU, it uses HAXM VT-x hardware 
+   accelleration (CPU needs to support it), so it is significally 
+   faster in textmode.
    But it doesn't support DPMI yet and will probably never support
    graphics, as it is technically impossible to emulate a real VGA
    card with sufficient performance on VT-x
-   Build instructions in: doc\haxm.txt, doc\old-src.txt
+   Works with minnt and old-src build.
+   Build instructions in: doc\haxm.txt
  * MINNT
    This is the most recent NTVDM source code, it supports multiple
    languages, but is probably harder to build.
    It is planned to continue development on this source tree as of
    Feb/2020
-   old-src will still be maintaned, as long as HAXM build relies on it.
    Build instructions in: doc\minnt.txt
 
 In case you want a fully compiled build, I recommend Googling for ntvdmx64
@@ -222,11 +222,28 @@ FAQ
 ===
 I want to have a proper soundcard emulation
 ---------------------------------------------------------------------------
+MINNT build supports AdLib soundcard emulation by incorporating code parts
+of SoundFX2000 into NTVDM SB20 emulation.
+
+But you can also try to use the real
+
 http://www.softsystem.co.uk/products/soundfx.htm
 
 To remove time limit (as it's free nowadays anyway), please
 see:
 https://github.com/leecher1337/ntvdmx64/issues/40#issuecomment-510697281
+
+But it sometimes causes applications to hang and not react to keyboard
+input.
+
+
+The PC speaker output is choppy and generally inaccurate, I want my PC
+speaker sound back
+---------------------------------------------------------------------------
+This is not NTVDMx64's fault, it is related to a bad design change in 
+Windows starting with Windows 7.
+It can be solved by installing a proper PC Speaker driver:
+https://www.vogons.org/viewtopic.php?f=46&t=58233
 
 
 I want to run 16bit Windows applications
@@ -235,6 +252,17 @@ Sorry, NTVDMx64 isn't capable of it, as crucial system scheduler parts
 are not available on 64bit Windows.
 But I recommend installing https://github.com/otya128/winevdm
 additionally to NTVDMx64 so you get the best of both worlds.
+
+
+I want to use my mouse in my textmode application and not select text 
+---------------------------------------------------------------------------
+You forgot to disable QuickEdit mode of the windows console.
+See: https://github.com/leecher1337/ntvdmx64/issues/80
+
+
+I want to print to my windows GDI printer
+---------------------------------------------------------------------------
+Google "DOSPR.ZIP"
 
 
 Are there any documents that describe the inner workings of the NTVDM 

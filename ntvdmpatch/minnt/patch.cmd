@@ -1,4 +1,4 @@
-@echo off
+@echo on
 setlocal ENABLEDELAYEDEXPANSION
 
 echo ----------------------------------------------------
@@ -26,9 +26,10 @@ if not exist %minntfix%\minnt\public\internal\base\inc\splapip.h (
 echo Copying fixed files to minnt repository
 xcopy /E /R /Y %minntfix% %BASEPATH%\..\..\
 echo #include "winddi_xp.h" >>%BASEPATH%\..\..\minnt\public\oak\inc\winddi.h
-ren %BASEPATH%\mvdm\bin86\jpn\_disp.sys %BASEPATH%\mvdm\bin86\jpn\$disp.sys
-ren %BASEPATH%\mvdm\bin86\jpn\_ias.sys %BASEPATH%\mvdm\bin86\jpn\$ias.sys
-ren %BASEPATH%\mvdm\bin86\jpn\_prnescp.sys %BASEPATH%\mvdm\bin86\jpn\$prnescp.sys
+rem ... But in makefile, it's with _ ..?
+rem ren %BASEPATH%\mvdm\bin86\jpn\_disp.sys $disp.sys
+rem ren %BASEPATH%\mvdm\bin86\jpn\_ias.sys $ias.sys
+rem ren %BASEPATH%\mvdm\bin86\jpn\_prnescp.sys $prnescp.sys
 xcopy /Y %BASEPATH%\mvdm\dos\v86\cmd\backup\kor\makefile %BASEPATH%\mvdm\dos\v86\cmd\backup\jpn\
 
 echo Enabling old DPMI code
@@ -52,9 +53,7 @@ del "%BASEPATH%\mvdm\dpmi32\makefile"
 echo Ensuring that msg files have CRLF
 pushd %BASEPATH%\mvdm\dos\v86\messages
 for /R %%f in (*.msg) do (
-  more /p <%%f >tmp.msg
-  %PATCHROOT%\util\sed -i "s/^        /\t/g" tmp.msg
-  move tmp.msg %%f
+  %PATCHROOT%\util\sed -i "s/\r$/\n$/" %%f 
 )
 popd
 
@@ -64,8 +63,7 @@ pushd %BASEPATH%\..\
 cd ..
 %PATCHROOT%\util\patch -N -p0 -i %~dp0\be.patch
 rem Also ensure .mc file has CRLF line endings
-more /p <NTOSBE-master\src\sdktools\rcdll\rcmsgs.mc >tmp.msg
-move tmp.msg NTOSBE-master\src\sdktools\rcdll\rcmsgs.mc
+%PATCHROOT%\util\sed -i "s/\r$/\n$/" NTOSBE-master\src\sdktools\rcdll\rcmsgs.mc
 popd
 
 

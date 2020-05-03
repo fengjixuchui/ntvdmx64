@@ -81,66 +81,93 @@ LPVOID GetPtrFromVA(PVOID ptr, IMAGE_NT_HEADERS *pNTHeader, PBYTE pImageBase) //
 	return GetPtrFromRVA(rva, pNTHeader, pImageBase);
 }
 
+PIMAGE_IMPORT_DESCRIPTOR IAT_FindLibrary(LPBYTE hMod, char *LibNameBigCaseName_SmallFormat)
+{
+	PIMAGE_DOS_HEADER DosHeader = (PIMAGE_DOS_HEADER)hMod;
+	PIMAGE_NT_HEADERS NtHeaders = (PIMAGE_NT_HEADERS)(hMod + DosHeader->e_lfanew);
+	PIMAGE_IMPORT_DESCRIPTOR idata = (PIMAGE_IMPORT_DESCRIPTOR)(hMod + NtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
+	char *pszDLL;
+
+	for (; idata->Name; idata++) {
+		pszDLL = (char*)(hMod + idata->Name);
+		if (!__stricmp(pszDLL, LibNameBigCaseName_SmallFormat)) return idata;
+	}
+	return NULL;
+}
+
+int IAT_FindFunction(LPBYTE hMod, PIMAGE_IMPORT_DESCRIPTOR idata, char *FunName, PULONG_PTR *ppAddress)
+{
+	PIMAGE_THUNK_DATA ThunkData = (PIMAGE_THUNK_DATA)(hMod + idata->OriginalFirstThunk);
+	PULONG_PTR Address = (PULONG_PTR)(hMod + idata->FirstThunk);
+	int i;
+
+	for (i = 0; ThunkData->u1.ForwarderString; i++) {
+		if (!(ThunkData->u1.AddressOfData & IMAGE_ORDINAL_FLAG))
+		{
+			char *pszIATFunName = (char*)(hMod + ThunkData->u1.ForwarderString + 2);
+			if (IsBadStringPtrA(pszIATFunName, 4096))
+			{
+				TRACE("LDNTVDM: Cannot check for IAT entry %s of module @%08X. Thunk=%08X, AddressOfData=%08X, ForwarderString=%08X",
+					FunName, hMod, ThunkData, ThunkData->u1.AddressOfData, ThunkData->u1.ForwarderString);
+			}
+			else if (!_strcmp(pszIATFunName, FunName))
+			{
+				DWORD OldProt;
+
+				if (Address[i] == ThunkData->u1.AddressOfData)
+				{
+					TRACE("IAT entry is not bound yet");
+					return -3;
+				}
+				*ppAddress = &Address[i];
+				return 0;
+			}
+		} ThunkData++;
+	}
+	return -2;
+}
+
+int IAT_SetHook(PULONG_PTR Address, LPVOID NewFun, PULONG_PTR OldFun)
+{
+	DWORD OldProt;
+
+	VirtualProtect(Address, sizeof(ULONG_PTR), PAGE_READWRITE, &OldProt);
+	if (OldFun) *OldFun = *Address;
+	TRACE("Hooked %08X -> %08X", *Address, NewFun);
+	*Address = (ULONG_PTR)NewFun;
+	VirtualProtect(Address, sizeof(ULONG_PTR), OldProt, &OldProt);
+	return 0;
+}
+
 /* -1	-	Library not found
  * -2	-	Entry point not found
  * -3	-	IAT entry not bound yet
  */
 int Hook_IAT_x64_IAT(LPBYTE hMod, char LibNameBigCaseName_SmallFormat[], char FunName[], LPVOID NewFun, PULONG_PTR OldFun) 
 {
-	PIMAGE_DOS_HEADER DosHeader = (PIMAGE_DOS_HEADER)hMod;
-	PIMAGE_NT_HEADERS NtHeaders = (PIMAGE_NT_HEADERS)(hMod + DosHeader->e_lfanew);
-	PIMAGE_IMPORT_DESCRIPTOR idata = (PIMAGE_IMPORT_DESCRIPTOR)(hMod + NtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
+	PIMAGE_IMPORT_DESCRIPTOR idata;
+	PULONG_PTR Address;
 	int i, iRet = -1;
-	char *pszDLL;
 
 	TRACE("Hook_IAT_x64_IAT(%08X, %s, %s, %08X, %08X)", hMod, LibNameBigCaseName_SmallFormat, FunName, NewFun, OldFun);
-	for (; idata->Name; idata++) {
-		pszDLL = (char*)(hMod + idata->Name);
-		if (!__stricmp(pszDLL, LibNameBigCaseName_SmallFormat)) {
-			iRet = -2;
-			PIMAGE_THUNK_DATA ThunkData = (PIMAGE_THUNK_DATA)(hMod + idata->OriginalFirstThunk);
-			PULONG_PTR Address = (PULONG_PTR)(hMod + idata->FirstThunk);
-			for (i = 0; ThunkData->u1.ForwarderString; i++) {
-				if (!(ThunkData->u1.AddressOfData & IMAGE_ORDINAL_FLAG))
-				{
-					char *pszIATFunName = (char*)(hMod + ThunkData->u1.ForwarderString + 2);
-					if (IsBadStringPtrA(pszIATFunName, 4096))
-					{
-						TRACE("LDNTVDM: Cannot check for IAT entry %s of module @%08X. Thunk=%08X, AddressOfData=%08X, ForwarderString=%08X",
-							FunName, hMod, ThunkData, ThunkData->u1.AddressOfData, ThunkData->u1.ForwarderString);
-					}
-					else if (!_strcmp(pszIATFunName, FunName))
-					{
-						DWORD OldProt;
-
-						if (Address[i] == ThunkData->u1.AddressOfData)
-						{
-							TRACE("IAT entry is not bound yet");
-							return -3;
-						}
-						VirtualProtect(&Address[i], sizeof(ULONG_PTR), PAGE_READWRITE, &OldProt);
-						if (OldFun) *OldFun = Address[i];
-						TRACE("Hooked %08X -> %08X", Address[i], NewFun);
-						Address[i] = (ULONG_PTR)NewFun;
-						VirtualProtect(&Address[i], sizeof(ULONG_PTR), OldProt, &OldProt);
-						return 0;
-					}
-				} ThunkData++;
-			}
-		}
+	if (idata = IAT_FindLibrary(hMod, LibNameBigCaseName_SmallFormat)) 
+	{
+		iRet = IAT_FindFunction(hMod, idata, FunName, &Address);
+		if (iRet == 0) return IAT_SetHook(Address, NewFun, OldFun);
 	}
 	TRACE("Hooking failed (%d).", iRet);
 	return iRet;
 }
 
 
-BOOL Hook_IAT_x64(LPBYTE hMod, char LibNameBigCaseName_SmallFormat[], char *LibDelayImpName, char *FunName, LPVOID NewFun) 
+BOOL Hook_IAT_x64(LPBYTE hMod, char *LibDelayImpName, char *FunName, LPVOID NewFun) 
 {
 	PIMAGE_DOS_HEADER DosHeader = (PIMAGE_DOS_HEADER)hMod;
 	PIMAGE_NT_HEADERS NtHeaders = (PIMAGE_NT_HEADERS)(hMod + DosHeader->e_lfanew);
 	DWORD delayImportStartRVA, delayImportSize, nDelaySizeLeft;
 	PCImgDelayDescr pDelayDesc;
 
+	TRACE("Hook_IAT_x64(%08X, %s, %s, %08X)", hMod, LibDelayImpName, FunName, NewFun);
 	// Look up where the delay imports section is (normally in the .didat
 	/// section) but not necessarily so.
 	delayImportStartRVA = GetImgDirEntryRVA(NtHeaders, IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT);
@@ -196,12 +223,7 @@ BOOL Hook_IAT_x64(LPBYTE hMod, char LibNameBigCaseName_SmallFormat[], char *LibD
 					if (!_strcmp(pOrdinalName->Name, FunName))
 					{
 						PIMAGE_THUNK_DATA thunkIAT = GetPtrFromRVA((DWORD)pDelayDesc->rvaIAT, NtHeaders, hMod);
-						DWORD OldProt;
-						VirtualProtect(&thunkIAT[i].u1.Function, sizeof(ULONG_PTR), PAGE_READWRITE, &OldProt);
-						thunkIAT[i].u1.Function = (ULONG_PTR)NewFun;
-						VirtualProtect(&thunkIAT[i].u1.Function, sizeof(ULONG_PTR), OldProt, &OldProt);
-						OutputDebugStringA("NTVDM hook installed");
-						return TRUE;
+						return IAT_SetHook(&thunkIAT[i].u1.Function, NewFun, NULL) == 0;
 					}
 				}
 				thunk++;            // Advance to next thunk
@@ -211,6 +233,6 @@ BOOL Hook_IAT_x64(LPBYTE hMod, char LibNameBigCaseName_SmallFormat[], char *LibD
 		nDelaySizeLeft -= sizeof(ImgDelayDescr);
 	}
 
-	OutputDebugStringA("NTVDM hook install failed");
+	TRACE("Hook_IAT_x64 failed");
 	return FALSE;
 }
