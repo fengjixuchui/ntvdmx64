@@ -9,6 +9,7 @@
 #include "extract.h"
 #ifdef EXTRACTICON_HOOK
 #include "detour.h"
+#include "iathook.h"
 #include <inttypes.h>
 
 fpLookupIconIdFromDirectoryEx pLookupIconIdFromDirectoryEx = NULL;
@@ -58,7 +59,7 @@ static BOOL InitExtractIcon(void)
  * down, as only PrivateExtractIconsWHook uses this function in user32.dll 
  * Using this method prevents us from having to recreate the code of PrivateExtractIconsW
  */
-BOOL ReadFileHook(HANDLE hFile, LPVOID lpBuffer, DWORD nNumberOfBytesToRead, LPDWORD lpNumberOfBytesRead,
+BOOL WINAPI ReadFileHook(HANDLE hFile, LPVOID lpBuffer, DWORD nNumberOfBytesToRead, LPDWORD lpNumberOfBytesRead,
 	LPOVERLAPPED lpOverlapped)
 {
 	BOOL result = ReadFileReal(hFile, lpBuffer, nNumberOfBytesToRead, lpNumberOfBytesRead, lpOverlapped);
@@ -94,7 +95,7 @@ UINT WINAPI PrivateExtractIconsWHook(LPCWSTR szFileName, int nIconIndex, int cxI
 {
 	UINT     result;
 
-	TRACE("PrivateExtractIconsWHook(%S)", szFileName);
+	TRACE("PrivateExtractIconsWHook(%S)\n", szFileName);
 	EnterCriticalSection(&m_cs);
 	m_nIconIndex = nIconIndex;
 	m_cxIcon = cxIcon;
@@ -121,13 +122,16 @@ BOOL HookExtractIcon()
 	if (hUser && !PrivateExtractIconsWReal)
 	{
 		// As many functions are using this, we cannot do IAT hooking but have to do an inline hook here
-		PrivateExtractIconsWReal = GetProcAddress(hUser, "PrivateExtractIconsW");
+		PrivateExtractIconsWReal = (fpPrivateExtractIconsW)GetProcAddress(hUser, "PrivateExtractIconsW");
 		PrivateExtractIconsWReal = (fpPrivateExtractIconsW)Hook_Inline(PrivateExtractIconsWReal, PrivateExtractIconsWHook);
 	}
 	if (hUser)
 	{
-		if (Hook_IAT_x64_IAT((LPBYTE)hUser, "api-ms-win-core-file-l1-2-1.dll", "ReadFile", ReadFileHook, &ReadFileReal))
-			Hook_IAT_x64_IAT((LPBYTE)hUser, "api-ms-win-core-file-l1-1-0.dll", "ReadFile", ReadFileHook, &ReadFileReal);
+#ifdef TARGET_WIN7
+		if (Hook_IAT_x64_IAT((LPBYTE)hUser, "kernel32.dll", "ReadFile", ReadFileHook, (PULONG_PTR)&ReadFileReal))
+#endif
+		if (Hook_IAT_x64_IAT((LPBYTE)hUser, "api-ms-win-core-file-l1-2-1.dll", "ReadFile", ReadFileHook, (PULONG_PTR)&ReadFileReal))
+			Hook_IAT_x64_IAT((LPBYTE)hUser, "api-ms-win-core-file-l1-1-0.dll", "ReadFile", ReadFileHook, (PULONG_PTR)&ReadFileReal);
 	}
 	return hUser != NULL;
 }

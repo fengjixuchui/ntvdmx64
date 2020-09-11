@@ -1,16 +1,20 @@
 @echo off
 echo ----------------------------------------------------
-echo Preparing MINNT repository
+echo Preparing MINNT repository, please wait...
 echo ----------------------------------------------------
 echo.
 
-if exist "%ProgramFiles%\7-Zip" set PATH=%PATH%;"%ProgramFiles%\7-Zip"
+if exist "%ProgramFiles%\7-Zip" set PATH=%PATH:)=^)%;"%ProgramFiles%\7-Zip"
+7z >nul 2>&1
+if errorlevel 255 (
+for /F "skip=2 tokens=3*" %%r in ('reg query "HKEY_LOCAL_MACHINE\SOFTWARE\7-zip" /v Path') do echo set PATH=%PATH:)=^)%;%%r
 7z >nul 2>&1
 if errorlevel 255 (
 echo Please install 7zip first, then run again
 start http://www.7-zip.de
 pause
 goto fini
+)
 )
 
 rem Directory that contains the fixes to be applied to minnt
@@ -115,7 +119,7 @@ echo You have to find this yourself on the Internet
 pause
 goto fini
 )
-7z x -y %workdir%\%OLDSRC% old-src\nt\private\windows\inc\gdispool.h old-src\nt\private\windows\spooler\inc\splapip.h old-src\nt\public\oak\inc\winddiui.h old-src\nt\private\sdktools\jetadmin\inc\winioctl.h old-src\nt\private\sdktools\jetadmin\inc\dsound.h old-src\nt\public\oak\inc\compstui.h old-src\nt\private\mvdm\wow16 old-src\nt\private\mvdm\softpc.new\host\inc\alpha old-src\nt\private\mvdm\softpc.new\host\inc\mips old-src\nt\private\mvdm\softpc.new\host\inc\ppc old-src\nt\private\mvdm\dpmi old-src\nt\private\mvdm\dpmi32 old-src\nt\private\mvdm\inc\intmac.inc old-src\nt\private\mvdm\inc\dpmi.h -o%workdir%
+7z x -y %workdir%\%OLDSRC% old-src\nt\private\windows\inc\gdispool.h old-src\nt\private\windows\spooler\inc\splapip.h old-src\nt\public\oak\inc\winddiui.h old-src\nt\private\sdktools\jetadmin\inc\winioctl.h old-src\nt\private\sdktools\jetadmin\inc\dsound.h old-src\nt\public\oak\inc\compstui.h old-src\nt\private\mvdm\wow16 old-src\nt\private\mvdm\softpc.new\host\inc\alpha old-src\nt\private\mvdm\softpc.new\host\inc\mips old-src\nt\private\mvdm\softpc.new\host\inc\ppc old-src\nt\private\mvdm\dpmi old-src\nt\private\mvdm\dpmi32 old-src\nt\private\mvdm\inc\intmac.inc old-src\nt\private\mvdm\inc\dpmi.h old-src\nt\private\mvdm\tools16\implib.exe old-src\nt\private\mvdm\tools16\rc16.exe old-src\nt\private\mvdm\tools16\rcpp.exe old-src\tools\x86\idw\sednew.exe old-src\nt\private\sdktools\upd old-src\nt\private\sdktools\qgrep -o%workdir%
 if not exist %workdir%\old-src\nt\private\windows\inc\gdispool.h (
 echo Cannot expand %workdir%\old-src\nt\private\windows\inc\gdispool.h from %workdir%\%OLDSRC%
 echo Cannot continue.
@@ -132,16 +136,26 @@ move /y %workdir%\old-src\nt\public\oak\inc\winddiui.h %minntfix%\minnt\public\o
 echo #include "winddiui_xp.h" >>%minntfix%\minnt\public\oak\inc\winddiui.h
 
 
-xcopy /s /y %workdir%\old-src\nt\private\mvdm\wow16 %minntfix%\minnt\base\mvdm\wow16\
-xcopy /s /y %workdir%\old-src\nt\private\mvdm\softpc.new\host\inc\alpha %minntfix%\minnt\base\mvdm\softpc.new\host\inc\alpha\
-xcopy /s /y %workdir%\old-src\nt\private\mvdm\softpc.new\host\inc\mips %minntfix%\minnt\base\mvdm\softpc.new\host\inc\mips\
-xcopy /s /y %workdir%\old-src\nt\private\mvdm\softpc.new\host\inc\ppc %minntfix%\minnt\base\mvdm\softpc.new\host\inc\ppc\
+xcopy /e /y %workdir%\old-src\nt\private\mvdm\wow16 %minntfix%\minnt\base\mvdm\wow16\
+xcopy /e /y %workdir%\old-src\nt\private\mvdm\softpc.new\host\inc\alpha %minntfix%\minnt\base\mvdm\softpc.new\host\inc\alpha\
+xcopy /e /y %workdir%\old-src\nt\private\mvdm\softpc.new\host\inc\mips %minntfix%\minnt\base\mvdm\softpc.new\host\inc\mips\
+xcopy /e /y %workdir%\old-src\nt\private\mvdm\softpc.new\host\inc\ppc %minntfix%\minnt\base\mvdm\softpc.new\host\inc\ppc\
 del %minntfix%\minnt\base\mvdm\wow16\inc\ime.h
-xcopy /s /y %workdir%\old-src\nt\private\mvdm\dpmi %minntfix%\minnt\base\mvdm\dpmi.old\
-xcopy /s /y %workdir%\old-src\nt\private\mvdm\dpmi32 %minntfix%\minnt\base\mvdm\dpmi32.old\
+xcopy /e /y %workdir%\old-src\nt\private\mvdm\dpmi %minntfix%\minnt\base\mvdm\dpmi.old\
+xcopy /e /y %workdir%\old-src\nt\private\mvdm\dpmi32 %minntfix%\minnt\base\mvdm\dpmi32.old\
 xcopy /Y %workdir%\old-src\nt\private\mvdm\inc\intmac.inc %minntfix%\minnt\base\mvdm\dpmi.old\
 md %minntfix%\minnt\base\mvdm\inc
 copy /Y %workdir%\old-src\nt\private\mvdm\inc\dpmi.h %minntfix%\minnt\base\mvdm\inc\dpmi.h.old
+xcopy /e /y %workdir%\old-src\nt\private\mvdm\tools16\implib.exe %minntfix%\NTOSBE-master\tools\x86\tools16\
+xcopy /e /y %workdir%\old-src\nt\private\mvdm\tools16\rcpp.exe %minntfix%\NTOSBE-master\tools\x86\tools16\
+copy /y %workdir%\old-src\nt\private\mvdm\tools16\rc16.exe %minntfix%\NTOSBE-master\tools\x86\tools16\rc16dos.exe
+copy /Y %workdir%\old-src\tools\x86\idw\sednew.exe %minntfix%\NTOSBE-master\tools\x86\idw\sed.exe
+xcopy /e /y %workdir%\old-src\nt\private\sdktools\upd %minntfix%\NTOSBE-master\src\sdktools\upd\
+rem Windows 7 and above has UAC. Its heuristic assumes that if some executable starts with name upd or setup or patch, etc.
+rem that it needs to elevate its privileges. This is not the case for upd.exe and would interfere with build process
+rem Therefore we need to embed a manifest in upd
+echo 1 24 upd.man >>%minntfix%\NTOSBE-master\src\sdktools\upd\upd.rc
+xcopy /e /y %workdir%\old-src\nt\private\sdktools\qgrep %minntfix%\NTOSBE-master\src\sdktools\qgrep\
 xcopy /Y %minntfix%\minnt\base\mvdm\dos\v86\cmd\append\dirs %minntfix%\minnt\base\mvdm\dpmi.old\
 
 for %%I in (command debug edlin exe2bin graphics keyb loadfix mem nlsfunc setver) do (

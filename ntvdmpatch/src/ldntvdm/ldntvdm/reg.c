@@ -8,31 +8,47 @@
  * Changes: 06.01.2019  - Created
  */
 
-#if defined(TARGET_WIN7) 
-
+#define WIN32_NO_STATUS
 #include <ntstatus.h>
 #include "ldntvdm.h"
+#include "ntrtl.h"
+#include "ntregapi.h"
 #include "Winternl.h"
 
-typedef struct _KEY_VALUE_PARTIAL_INFORMATION {
-	ULONG TitleIndex;
-	ULONG Type;
-	ULONG DataLength;
-	UCHAR Data[1];
-} KEY_VALUE_PARTIAL_INFORMATION, *PKEY_VALUE_PARTIAL_INFORMATION;
+#if defined(USE_SYMCACHE) || defined(WOW16_SUPPORT)
 
-typedef enum _KEY_VALUE_INFORMATION_CLASS {
-	KeyValueBasicInformation,
-	KeyValueFullInformation,
-	KeyValuePartialInformation,
-	KeyValueFullInformationAlign64,
-	KeyValuePartialInformationAlign64
-} KEY_VALUE_INFORMATION_CLASS;
+#endif 
 
-NTSYSAPI NTSTATUS NTAPI NtQueryValueKey(HANDLE, const UNICODE_STRING *, KEY_VALUE_INFORMATION_CLASS, void *, DWORD, DWORD *);
-NTSYSAPI NTSTATUS NTAPI NtCreateKey(PHANDLE, ACCESS_MASK, const OBJECT_ATTRIBUTES*, ULONG, const UNICODE_STRING*, ULONG, PULONG);
-NTSYSAPI NTSTATUS NTAPI NtSetValueKey(HANDLE, const UNICODE_STRING *, ULONG, ULONG, const void *, ULONG);
-NTSYSAPI NTSTATUS NTAPI RtlOpenCurrentUser(_In_ ACCESS_MASK DesiredAccess, _Out_ PHANDLE KeyHandle);
+#if defined(WOW16_SUPPORT)
+BOOL REG_CheckForOTVDM(void)
+{
+	HKEY hKey;
+	UNICODE_STRING uStr;
+	OBJECT_ATTRIBUTES ObjectAttributes;
+	NTSTATUS Status;
+
+	RtlInitUnicodeString(&uStr, L"\\Registry\\Machine\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\NtVdm64\\0OTVDM");
+	InitializeObjectAttributes(&ObjectAttributes, &uStr, OBJ_CASE_INSENSITIVE, NULL, NULL);
+	Status = NtOpenKey(&hKey, GENERIC_READ, &ObjectAttributes);
+	if (NT_SUCCESS(Status))
+	{
+		NtClose(hKey);
+		return TRUE;
+	}
+	// Also check for installed WOW. If user hasn't installed it, fallback to default behaviour
+	RtlInitUnicodeString(&uStr, L"\\Registry\\Machine\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows NT\\CurrentVersion\\WOW");
+	InitializeObjectAttributes(&ObjectAttributes, &uStr, OBJ_CASE_INSENSITIVE, NULL, NULL);
+	Status = NtOpenKey(&hKey, GENERIC_READ, &ObjectAttributes);
+	if (NT_SUCCESS(Status)) 
+	{
+		NtClose(hKey);
+		return FALSE; 
+	}
+	return TRUE;
+}
+#endif
+
+#if defined(USE_SYMCACHE)
 
 NTSTATUS REG_OpenLDNTVDM(DWORD dwAccess, PHKEY phKey)
 {
@@ -73,12 +89,12 @@ NTSTATUS REG_QueryNum(HKEY hKey, LPWSTR lpKey, PBYTE pdwResult, UINT Type)
 
 NTSTATUS REG_QueryDWORD(HKEY hKey, LPWSTR lpKey, PDWORD pdwResult)
 {
-	return REG_QueryNum(hKey, lpKey, pdwResult, REG_DWORD);
+	return REG_QueryNum(hKey, lpKey, (PBYTE)pdwResult, REG_DWORD);
 }
 
 NTSTATUS REG_QueryQWORD(HKEY hKey, LPWSTR lpKey, PULONGLONG pdwResult)
 {
-	return REG_QueryNum(hKey, lpKey, pdwResult, REG_QWORD);
+	return REG_QueryNum(hKey, lpKey, (PBYTE)pdwResult, REG_QWORD);
 }
 
 NTSTATUS REG_SetDWORD(HKEY hKey, LPWSTR lpKey, DWORD dwData)

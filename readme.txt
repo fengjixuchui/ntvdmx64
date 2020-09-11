@@ -120,11 +120,9 @@ setting a registry key.
 
 Some registry keys also need to be set to show that the NTVDM is present and
 can get called. 
-So this is all rather complex, but it sort of works (except DPMI-stuff, 
-which doesn't seem to work too well or still crash for unknown resons)
-with some patches to the operating system. It's enough as a 
-proof-of-concept and to use it for most business applications and even some
-games.
+So this is all rather complex, but it sort of works with some patches to 
+the operating system. It's enough as a proof-of-concept and to use it for 
+most business applications and even some games.
 
 Cool, where can I get it?
 =========================
@@ -151,16 +149,19 @@ There are various "flavours" of NTVDM that can be built:
    The original NT4 NTVDM. Maybe the easiest version to build, but
    it doesn't have multilanguage and lacks some features like LFN
    This has been the default repository until Feb/2020 where 
-   development has been switches to MINNT tree.
+   development has been switched to MINNT tree.
+   This build method therefore is DEPRECATED in favour of the 
+   MINNT build systemand will not receive any future updates!
+   This build is left unmaintained and unchecked, so don't complain
+   if it doesn't build anymore.
    Please note that you need Windows XP for building.
    Build instructions in: doc\old-src.txt
  * HAXM
    Instead of using the emulated CCPU, it uses HAXM VT-x hardware 
    accelleration (CPU needs to support it), so it is significally 
    faster in textmode.
-   But it doesn't support DPMI yet and will probably never support
-   graphics, as it is technically impossible to emulate a real VGA
-   card with sufficient performance on VT-x
+   But it will probably never support graphics, as it is technically 
+   impossible to emulate a real VGA card with sufficient performance on VT-x
    Works with minnt and old-src build.
    Build instructions in: doc\haxm.txt
  * MINNT
@@ -210,6 +211,7 @@ dpmi.exe, but most programs should work, I hope.
 
 Tested on
 =========
+Windows Server 2003 x64
 Windows 7 x64
 Windows 8 x64
 Windows Server 2008 x64
@@ -225,6 +227,10 @@ I want to have a proper soundcard emulation
 MINNT build supports AdLib soundcard emulation by incorporating code parts
 of SoundFX2000 into NTVDM SB20 emulation.
 
+To make it more clear: 
+  As MUSIC device, select AdLib
+  As SOUND device, select Soundblaster 2.0
+
 But you can also try to use the real
 
 http://www.softsystem.co.uk/products/soundfx.htm
@@ -234,7 +240,8 @@ see:
 https://github.com/leecher1337/ntvdmx64/issues/40#issuecomment-510697281
 
 But it sometimes causes applications to hang and not react to keyboard
-input.
+input, so only try it if the NTVDM internal sound emulation isn't good 
+enough for your needs.
 
 
 The PC speaker output is choppy and generally inaccurate, I want my PC
@@ -248,10 +255,63 @@ https://www.vogons.org/viewtopic.php?f=46&t=58233
 
 I want to run 16bit Windows applications
 ---------------------------------------------------------------------------
-Sorry, NTVDMx64 isn't capable of it, as crucial system scheduler parts
-are not available on 64bit Windows.
-But I recommend installing https://github.com/otya128/winevdm
-additionally to NTVDMx64 so you get the best of both worlds.
+As ob 05/2020, NTVDMx64 now generally supports WOW32, so your applications 
+should run.
+However, they currently only work with the CCPU build and we know that the
+CCPU is slow, so I still recommend wineVDM:
+	https://github.com/otya128/winevdm
+The loader tries to detect if winevdm is installed and if so, it gets
+precedence over NTVDMx64. If you restore original registry entries, WOW32
+will be handled by NTVDMx64 again.
+The crucial registry key for the check is:
+HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion\NtVdm64\0OTVDM
+If it is present, NTVDMx64 won't load its WOW32 implementation.
+Please note, that detection of the key is done upon inital load of ldntvdm.dll
+into the process address space, so if you toggle the 0OTVDM, the process where
+you are launching your 16 bit application from needs to be restarted.
+If unsure, you can reboot your machine after installation/uninstallation of
+WineVDM handlers.
+
+To debug wow32, before launching your application:
+set WOWTRACE=C:\log.txt
+set WOWLOGLVL=16
+
+
+Is there a way to enlarge the graphics window?
+---------------------------------------------------------------------------
+You can use the EyeStrain parameter for this.
+Just execute reg\eyestrain.reg from the release-folder of NTVDMx64 and
+as soon as the parameter is set, you can switch between 3 variants of
+graphics display (Standard - Big - Huge) by pressing the "Scroll Lock" key.
+This only works in graphics mode!
+
+Here is how it works:
+The .reg file creates a REG_SZ key named "EyeStrain" under
+HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\WOW\CpuEnv
+which contains the string representatino of a hex value of the VK_
+virtual key code that needs to be checked for in order to switch between
+magnificaton sizes. The .reg file contains "91" as value, as 0x91 is the
+VK_SCROLL.
+You can find a list of Virtual keycodes here and change it accordingly:
+https://nehe.gamedev.net/article/msdn_virtualkey_codes/15009/
+
+Further explanation how it used to work on MIPS/Alpha builds:
+https://github.com/leecher1337/ntvdmx64/issues/95#issuecomment-637202206
+
+
+I want to use more than 16MB of DPMI memory
+---------------------------------------------------------------------------
+NTVDM is patched to obey DPMI memory size from .PIF file. However, its size
+is limited to maximum of 64MB due to .PIF specification. If you want to
+use more, you must set a registry key under:
+
+  HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\WOW\CpuEnv
+
+Create a REG_SZ value named DPMIMEM with the requested size of DPMI memory
+in KB, i.e. 131070 for 128MB of DPMI memory max.
+
+You can just execute the reg\dpmimem.reg from the release-folder of NTVDMx64
+to set 128MB of DPMI mem.
 
 
 I want to use my mouse in my textmode application and not select text 
@@ -263,6 +323,11 @@ See: https://github.com/leecher1337/ntvdmx64/issues/80
 I want to print to my windows GDI printer
 ---------------------------------------------------------------------------
 Google "DOSPR.ZIP"
+
+
+Why doesn't QUAKE work?
+---------------------------------------------------------------------------
+See: http://www.delorie.com/djgpp/v2faq/faq18_6.html
 
 
 Are there any documents that describe the inner workings of the NTVDM 

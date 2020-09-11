@@ -117,7 +117,7 @@ extern ULONG  getPG(VOID);
 extern ULONG  getCPL(VOID);
 extern ULONG  getVM (VOID);
 
-extern HANDLE hVM;
+extern HANDLE hVM, hVCPU;
 extern IU32 gvi_pc_low_regen;
 
 /* SYNC THESE DEFINITIONS WITH BASE\EMM.H, or sas_init will assert */
@@ -624,7 +624,6 @@ Return Value:
 
 {
 	IU32	required_mem;
-	struct hax_alloc_ram_info alloc_ram = { 0 };
 
 	required_mem = Size + NOWRAP_PROTECTION;
 	Start_of_M_area = (PBYTE)host_sas_init(Size);
@@ -645,9 +644,8 @@ Return Value:
 	 * will change some of this to being ROM.
 	 */
 
-	//sas_connect_memory(0, alloc_ram.size - 1, SAS_RAM);
-	haxm_alloc(Start_of_M_area, 0x110000);
-	sas_connect_memory(0, 0x110000, SAS_RAM);
+	haxm_alloc(Start_of_M_area, required_mem);
+	sas_connect_memory(0, 0x110000 - 1, SAS_RAM);
 
 #ifndef EGATEST
 	rom_init();
@@ -2062,35 +2060,6 @@ sas_storew_no_check(
 	addr &= SasWrapMask;
     *((word *)(getPtrToPhysAddrByte(addr))) = val;
 }
-EXPORT
-double_word
-effective_addr(
-    IN word Segment,
-    IN word Offset
-    )
-
-/*++
-
-Routine Description:
-
-    This routine maps effective_addr to Sim32GetVdmPointer
-
-Arguments:
-
-    Segment -- segment of address
-    Offset -- offset of address
-
-Return Value:
-
-    Actual Intel address corresponding to the address supplied
---*/
-{
-	if ((!getPE()) || getVM())
-		return ((LIN_ADDR)Segment << 4) + Offset;
-
-    return (ULONG)Sim32GetVDMPointer(((((ULONG)Segment) << 16) | Offset), 1,
-        (UCHAR) (getMSW() & MSW_PE ? TRUE : FALSE));
-}
 
 BOOL sas_twenty_bit_wrapping_enabled() {
     return (SasWrapMask == 0xfffff);
@@ -2154,7 +2123,7 @@ xtrn2phy IFN3
 	uint64_t va = lin, pa;
 	DWORD bytes;
 
-    if (!DeviceIoControl(hVM, HAX_VCPU_IOCTL_VA2GPA, &va, sizeof(va), &pa, sizeof(pa), &bytes, NULL))
+    if (!DeviceIoControl(hVCPU, HAX_VCPU_IOCTL_VA2GPA, &va, sizeof(va), &pa, sizeof(pa), &bytes, NULL))
     {
 		return FALSE;
     }

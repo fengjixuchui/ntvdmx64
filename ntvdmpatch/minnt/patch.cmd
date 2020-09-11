@@ -2,7 +2,7 @@
 setlocal ENABLEDELAYEDEXPANSION
 
 echo ----------------------------------------------------
-echo Patching MINNT for proper operation
+echo Patching MINNT for proper operation, please wait...
 echo ----------------------------------------------------
 echo.
 
@@ -60,10 +60,13 @@ popd
 echo Patching broken utilities
 pushd %BASEPATH%\..\
 %PATCHROOT%\util\patch -N -p0 -i %~dp0\tools.patch
+
 cd ..
 %PATCHROOT%\util\patch -N -p0 -i %~dp0\be.patch
 rem Also ensure .mc file has CRLF line endings
 %PATCHROOT%\util\sed -i "s/\r$/\n$/" NTOSBE-master\src\sdktools\rcdll\rcmsgs.mc
+rem Work around broken rc16
+del NTOSBE-master\tools\x86\tools16\rc16.exe
 popd
 
 

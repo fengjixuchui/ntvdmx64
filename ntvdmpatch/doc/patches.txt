@@ -1,6 +1,10 @@
 Description of the necessary patches included in this package
 -------------------------------------------------------------
 
+8253.patch          - The 8253 Timer implementation of NTVDM has a bug in
+                      Terminal Count mode (0): On overflow, it doesn't count
+                      down from 0xFFFF but from reload reg, leading to hangs 
+                      on apps that check for it. So handle mode 0 correctly.
 callconv.patch      - Patches wrong calling conventions in host-code
 ccpu.patch          - Patches the CCPU to compile on i386 and support Yoda
 ccpu_regs.patch     - Adds functions to access registers from the CCPU 
@@ -30,6 +34,10 @@ declaration.patch   - In cdecl calling convention, prototypes of functions
 dpmf.patch          - GetLongPathNameW signature is no good
 dpmi.patch          - Patches to DPMI sourcecode (MINNT and old-src need to
                       use the same old DPMI code from old-src).
+dpmimem.patch       - Patches DPMI default mem size to 16MB under DOS and
+                      adds code to get requested DPMI memory size from .PIF
+                      file, as well as a registry key to set global size of 
+                      DPMI mem to get more than default (see readme.txt FAQ)
 ega_crash.patch     - Console graphics is required, as newer Windows display 
                       drivers with WDDM driver model do not support fullscreen
                       anymore. Some DOS programs, like i.e. Commander Keen 4, 
@@ -37,6 +45,9 @@ ega_crash.patch     - Console graphics is required, as newer Windows display
                       crashes when not properly checked, so added checks for 
                       this.
 emm.patch           - Fixes a little problem in the EMM-Manager
+eyestrain.patch     - Commandline parameters like the hotkey to change video
+                      size can't get passed to NTVDM in newer windows versions,
+                      therefore, parameter is read from registry cpuenv key
 framerate.patch     - Increase screen refresh rate so that Video graphics 
                       output is smoother and not so choppy anymore.
 fixexe.patch        - It seems like the creator of the OpenNT package 
@@ -69,12 +80,18 @@ monitor.patch       - In a lot of #ifdefs, i386 is assumed to include V86
                       build then as a consequence to be able to do both builds
                       lateron, when crude makefiles.patch gets cleaned up.
 ntvdmctl.patch      - Removes NtVdmControl calls not working on x64 Windows
+ntmem.patch         - Prevent crash on access of DOS application to uncommitted 
+                      memory
+pcibug.patch        - Some stupid programs try to read PCI BIOS even though 
+                      installation check fails. So set CF on PCI INT 1Ah calls.
 sas4gen.patch       - Fix sas4gen CCPU header file
 sas.patch           - Optimize SAS-interface for faster memory access, 
                       significantly speeding up i.e. text output on EGA emulation
 spurint.patch       - Fix crash on spurious Interrupts
 timers.patch        - Fix crash on startup caued by uninitialized timer 
                       defaults.
+quicked.patch       - Disable Quick edit when entering DOS app or graphics mode
+                      to prevent conhost-crashes
 w10.patch           - Patches function calls that changed in later versions
                       of Windows so that NTVDM also works on Windows 10
                       and not only NT4 where source originates from.
@@ -83,6 +100,9 @@ w10_emm.patch       - x64 systems cannot allocate with 4k page granularity as
                       allocation functions on these Windows versions.
                       (Also see makefile-patches so that correct EMS-manager
                       code is used)
-wow32.patch         - Crude hack to disable WOW32, we do not currently support
-                      it, this is just for DOS
+wow16.patch         - Updates the old WOW16 code that we have to a version that
+                      works together with our WOW32 code. Lots of changes missing,
+                      but basically works as long as we don't have newer code.
+wow32.patch         - Hack WOW32 to be runnable on x64 Windows Versions without
+                      proper scheduler support.
 yoda.patch          - Fixes a few compilation problems of Yoda on i386 with CCPU
