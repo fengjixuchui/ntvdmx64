@@ -495,7 +495,7 @@
 < #ifndef _X86_
 ---
 > #ifndef _X86xx_
-203a210,306
+203a210,310
 > 
 > 
 > #ifdef W10
@@ -534,7 +534,11 @@
 > BOOL	x64WaitForMsgAndEvent(IN HANDLE hevent)
 > {
 > 	LOGDEBUG(LOG_TRACE,("x64WaitForMsgAndEvent\n"));
-> 	MsgWaitForMultipleObjects(1, &hevent, FALSE, INFINITE, QS_ALLEVENTS);
+> 	while (MsgWaitForMultipleObjects(1, &hevent, FALSE, 1, QS_ALLEVENTS) == WAIT_TIMEOUT)
+> 	{
+> 		LOGDEBUG(LOG_TRACE,("x64WaitForMsgAndEvent: No event in queue\n"));
+> 		WK32Yield(NULL);
+> 	}
 > 	LOGDEBUG(LOG_TRACE,("x64WaitForMsgAndEvent: Received\n"));
 > 	return FALSE;
 > }
@@ -593,18 +597,18 @@
 > 	}
 > }
 > #endif /* W10 */
-409a513,516
+409a517,520
 > #ifdef W10
 >         GlobalDeleteAtom(gidWNDPROC16);
 >         GlobalDeleteAtom(gidDLGPROC16);
 > #endif
-625c732
+625c736
 < #ifndef _X86_
 ---
 > #ifndef _X86xx_
-691a799,818
+691a803,822
 > #ifdef W10
->     pfnOut.pfnYieldTask = x64YieldTask;
+>     pfnOut.pfnYieldTask = (PFNYIELDTASK)x64YieldTask;
 >     pfnOut.pfnWowWaitForMsgAndEvent = x64WaitForMsgAndEvent;
 >     ptd = malloc_w_or_die(sizeof(TD));
 >     gdwTLSWOW32Reserved = TlsAlloc();
@@ -623,13 +627,13 @@
 > 		fLog = 2;
 > 	}
 > #else
-692a820
+692a824
 > #endif
-1944c2072
+1944c2076
 < #ifdef _X86_
 ---
 > #ifdef _X86xx_
-2136c2264
+2136c2268
 <                                    FILE_SHARE_WRITE,
 ---
 >                                    FILE_SHARE_WRITE | FILE_SHARE_READ,
@@ -941,6 +945,22 @@
 > HWND x64CreateWindowEx(DWORD dwExStyle, LPCTSTR lpClassName, LPCTSTR lpWindowName, DWORD dwStyle, 
 > 					   int X, int Y, int nWidth, int nHeight, HWND hWndParent, HMENU hMenu, 
 > 					   HANDLE hInstance, LPVOID lpParam);
+--- NT4\private\mvdm\wow32\wmsg16.c
++++ nt\private\mvdm\wow32\wmsg16.c
+130c130
+<     lpmpex->hwnd   = HWND32(lpmpex->Parm16.WndProc.hwnd);
+---
+>     lpmpex->hwnd   = FULLHWND32(lpmpex->Parm16.WndProc.hwnd);
+1398,1399d1397
+<      // FIXME: Enable the following when we are ready.
+<      /*
+1411d1408
+<     */
+1674,1675d1670
+<     // NOTE: Enable the following when we are ready.
+<     /*
+1686d1680
+<     */
 --- NT4\private\mvdm\wow32\wow32.h
 +++ nt\private\mvdm\wow32\wow32.h
 19a20
@@ -1085,6 +1105,40 @@
 > 
 > 
 > 
+--- NT4\private\mvdm\wow32\wmdisp32.c
++++ nt\private\mvdm\wow32\wmdisp32.c
+3257,3258d3256
+<             // FIXME: Enable the following when we are ready.
+<             /*
+3261d3258
+<             */
+3286,3287d3282
+<             // FIXME: Enable the following when we are ready.
+<             /*
+3290d3284
+<             */
+3310,3311d3303
+<             // FIXME: Enable the following when we are ready.
+<             /*
+3322d3313
+<             */
+3379,3380d3369
+<             // FIXME: Enable the following when we are ready.
+<             /*
+3383d3371
+<             */
+3398,3399d3385
+<             // FIXME: Enable the following when we are ready.
+<             /*
+3403d3388
+<             */
+--- NT4\private\mvdm\wow32\wgdi.c
++++ nt\private\mvdm\wow32\wgdi.c
+1686,1687d1685
+<         // FIXME: Enable the following when we are ready.
+<         /*
+1742d1739
+<         */
 --- NT4\private\mvdm\wow32\wparam.c
 +++ nt\private\mvdm\wow32\wparam.c
 359c359
