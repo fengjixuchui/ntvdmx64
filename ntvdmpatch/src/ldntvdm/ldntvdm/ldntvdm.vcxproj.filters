@@ -87,6 +87,12 @@
     <ClCompile Include="consbmpxpbug.c">
       <Filter>Quelldateien</Filter>
     </ClCompile>
+    <ClCompile Include="apppatch.c">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
+    <ClCompile Include="appinfo.c">
+      <Filter>Quelldateien</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="basemsg64.h">
@@ -186,6 +192,12 @@
       <Filter>Headerdateien</Filter>
     </ClInclude>
     <ClInclude Include="x64typespop.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="apppatch.h">
+      <Filter>Headerdateien</Filter>
+    </ClInclude>
+    <ClInclude Include="appinfo.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
   </ItemGroup>

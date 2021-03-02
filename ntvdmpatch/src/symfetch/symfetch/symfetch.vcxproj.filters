@@ -15,9 +15,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\ldntvdm\ldntvdm\symeng.c">
-      <Filter>Quelldateien</Filter>
-    </ClCompile>
     <ClCompile Include="symfetch.c">
       <Filter>Quelldateien</Filter>
     </ClCompile>

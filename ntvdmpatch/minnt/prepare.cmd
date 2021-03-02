@@ -41,6 +41,7 @@ md %workdir%
 
 if not exist %minntfix%\minnt\public\ddk\lib\x86\umpdddi.lib goto doddk
 if not exist %minntfix%\minnt\public\sdk\lib\x86\winspool.lib goto doddk
+if not exist %minntfix%\minnt\public\sdk\lib\x86\userenv.lib goto doddk
 for %%a in (compstdui.h winddi.h winddiui.h) do if not exist "%minntfix%\minnt\public\oak\inc\%%~a" goto doddk
 goto ddkok
 :doddk
@@ -49,6 +50,7 @@ echo Need to extract DDK files.
 if exist %workdir%\WDK\wxplibs_x86fre_cab001.cab (
 call :expandf %workdir%\WDK\wxplibs_x86fre_cab001.cab _umpdddi.lib_00315 %minntfix%\minnt\public\ddk\lib\x86\umpdddi.lib
 call :expandf %workdir%\WDK\wxplibs_x86fre_cab001.cab _winspool.lib_00345 %minntfix%\minnt\public\sdk\lib\x86\winspool.lib
+call :expandf %workdir%\WDK\wxplibs_x86fre_cab001.cab _userenv.lib_00322 %minntfix%\minnt\public\sdk\lib\x86\userenv.lib
 ) else goto ddkisoex
 if exist %workdir%\WDK\libs_x86fre_cab001.cab (
 rem For RegisterConsoleVDM with fewer parameters starting with Win7
@@ -104,8 +106,25 @@ call :expandiso GRMSDK_EN_DVD.iso Setup\WinSDKDebuggingTools\dbg_x86.msi
 goto redosdk
 
 :sdkok
+rem In case that WinXP/2k3 src is present, this would use original WOW16 code instead of our 
+rem reconstruction. However, orignal WOW16 code is incompatible with CCPU, therefore this 
+rem code branch will never become active. It's just here for experimental purposes, ignore it.
+set WOW16=old-src\nt\private\mvdm\wow16
+if exist %minntfix%\minnt\base\mvdm\wow16\makefile.inc goto winxpok
+if exist "%workdir%\XPSP1.7z" 7z x -y %workdir%\XPSP1.7z xpsrc1.cab -o%workdir%
+if exist %workdir%\xpsrc1.cab 7z x -y %workdir%\xpsrc1.cab base\mvdm\wow16 -o%workdir%\
+if not exist %workdir%\base\mvdm\wow16 (
+  if exist "%workdir%\Win2K3.7z"  7z x -y %workdir%\Win2K3.7z 3790src1.cab -o%workdir%
+  if exist %workdir%\3790src1.cab 7z x -y %workdir%\3790src1.cab base\mvdm\wow16 -o%workdir%\
+)
+if exist %workdir%\base\mvdm\wow16 (
+  rd /q /s %minntfix%\minnt\base\mvdm\wow16
+  move /y %workdir%\base\mvdm\wow16 %minntfix%\minnt\base\mvdm\
+  set WOW16=
+)
+
+:winxpok
 for %%a in (gdispool.h splapip.h) do if not exist "%minntfix%\minnt\public\internal\base\inc\%%~a" goto dooldsrc
-if not exist "%minntfix%\minnt\base\mvdm\wow16\makefile" goto dooldsrc
 goto oldsrcok
 :dooldsrc
 echo Need to copy missing files from old-src
@@ -119,7 +138,7 @@ echo You have to find this yourself on the Internet
 pause
 goto fini
 )
-7z x -y %workdir%\%OLDSRC% old-src\nt\private\windows\inc\gdispool.h old-src\nt\private\windows\spooler\inc\splapip.h old-src\nt\public\oak\inc\winddiui.h old-src\nt\private\sdktools\jetadmin\inc\winioctl.h old-src\nt\private\sdktools\jetadmin\inc\dsound.h old-src\nt\public\oak\inc\compstui.h old-src\nt\private\mvdm\wow16 old-src\nt\private\mvdm\softpc.new\host\inc\alpha old-src\nt\private\mvdm\softpc.new\host\inc\mips old-src\nt\private\mvdm\softpc.new\host\inc\ppc old-src\nt\private\mvdm\dpmi old-src\nt\private\mvdm\dpmi32 old-src\nt\private\mvdm\inc\intmac.inc old-src\nt\private\mvdm\inc\dpmi.h old-src\nt\private\mvdm\tools16\implib.exe old-src\nt\private\mvdm\tools16\rc16.exe old-src\nt\private\mvdm\tools16\rcpp.exe old-src\tools\x86\idw\sednew.exe old-src\nt\private\sdktools\upd old-src\nt\private\sdktools\qgrep -o%workdir%
+7z x -y %workdir%\%OLDSRC% old-src\nt\private\windows\inc\gdispool.h old-src\nt\private\windows\spooler\inc\splapip.h old-src\nt\public\oak\inc\winddiui.h old-src\nt\private\sdktools\jetadmin\inc\winioctl.h old-src\nt\private\sdktools\jetadmin\inc\dsound.h old-src\nt\public\oak\inc\compstui.h %WOW16% old-src\nt\private\mvdm\softpc.new\host\inc\alpha old-src\nt\private\mvdm\softpc.new\host\inc\mips old-src\nt\private\mvdm\softpc.new\host\inc\ppc old-src\nt\private\mvdm\dpmi old-src\nt\private\mvdm\dpmi32 old-src\nt\private\mvdm\inc\intmac.inc old-src\nt\private\mvdm\inc\dpmi.h old-src\nt\private\mvdm\tools16\implib.exe old-src\nt\private\mvdm\tools16\rc16.exe old-src\nt\private\mvdm\tools16\rcpp.exe old-src\tools\x86\idw\sednew.exe old-src\nt\private\sdktools\upd old-src\nt\private\sdktools\qgrep -o%workdir%
 if not exist %workdir%\old-src\nt\private\windows\inc\gdispool.h (
 echo Cannot expand %workdir%\old-src\nt\private\windows\inc\gdispool.h from %workdir%\%OLDSRC%
 echo Cannot continue.
@@ -136,11 +155,13 @@ move /y %workdir%\old-src\nt\public\oak\inc\winddiui.h %minntfix%\minnt\public\o
 echo #include "winddiui_xp.h" >>%minntfix%\minnt\public\oak\inc\winddiui.h
 
 
-xcopy /e /y %workdir%\old-src\nt\private\mvdm\wow16 %minntfix%\minnt\base\mvdm\wow16\
+if exist %workdir%\old-src\nt\private\mvdm\wow16\makefile (
+  xcopy /e /y %workdir%\old-src\nt\private\mvdm\wow16 %minntfix%\minnt\base\mvdm\wow16\
+  del %minntfix%\minnt\base\mvdm\wow16\inc\ime.h
+)
 xcopy /e /y %workdir%\old-src\nt\private\mvdm\softpc.new\host\inc\alpha %minntfix%\minnt\base\mvdm\softpc.new\host\inc\alpha\
 xcopy /e /y %workdir%\old-src\nt\private\mvdm\softpc.new\host\inc\mips %minntfix%\minnt\base\mvdm\softpc.new\host\inc\mips\
 xcopy /e /y %workdir%\old-src\nt\private\mvdm\softpc.new\host\inc\ppc %minntfix%\minnt\base\mvdm\softpc.new\host\inc\ppc\
-del %minntfix%\minnt\base\mvdm\wow16\inc\ime.h
 xcopy /e /y %workdir%\old-src\nt\private\mvdm\dpmi %minntfix%\minnt\base\mvdm\dpmi.old\
 xcopy /e /y %workdir%\old-src\nt\private\mvdm\dpmi32 %minntfix%\minnt\base\mvdm\dpmi32.old\
 xcopy /Y %workdir%\old-src\nt\private\mvdm\inc\intmac.inc %minntfix%\minnt\base\mvdm\dpmi.old\
@@ -166,7 +187,7 @@ for %%I in (command debug edlin exe2bin graphics keyb loadfix mem nlsfunc setver
 :oldsrcok
 echo The patch directory is now prepared. You may delete the contents of the 
 echo of the %workdir% directory now.
-pause
+if not "%1"=="batch" pause
 goto fini
 
 :expandf
