@@ -10,6 +10,12 @@
 < #ifdef i386
 ---
 > #ifdef MONITOR
+276a277
+> #ifdef MONITOR
+279a281,283
+> #else
+>         (*pfnDbgTraceEvent)(pVdmTraceInfo, Type, wData, lData);
+> #endif
 --- NT4\private\mvdm\vdmdbg\common.h
 +++ nt\private\mvdm\vdmdbg\common.h
 201c201
@@ -208,9 +214,9 @@
 > #endif
 --- NT4\private\mvdm\softpc.new\host\src\nt_bop.c
 +++ nt\private\mvdm\softpc.new\host\src\nt_bop.c
-754a755
+779a780
 > #ifdef X86GFX
-762a764
+787a789
 > #endif
 --- NT4\private\mvdm\v86\monitor\x86\monitor.c
 +++ nt\private\mvdm\v86\monitor\x86\monitor.c
@@ -282,7 +288,8 @@ diff -r F:\Windows.Source.Code.w2k.nt4.wxp\minnt\q160765803-minint4-85fac4faadc7
 > #endif
 --- NT4\private\mvdm\softpc.new\host\src\nt_thred.c
 +++ nt\private\mvdm\softpc.new\host\src\nt_thred.c
-40a41,61
+43a44,64
+> 
 > /*
 >  * leecher1337:
 >  * Hack for x64 kernel that doesn't initialize the TIB struct
@@ -303,8 +310,7 @@ diff -r F:\Windows.Source.Code.w2k.nt4.wxp\minnt\q160765803-minint4-85fac4faadc7
 > }
 > 
 > 		
-> 
-127a149,151
+131a153,155
 > #ifdef W10
 >        host_InitializeTib();
 > #endif
@@ -317,3 +323,9 @@ diff -r F:\Windows.Source.Code.w2k.nt4.wxp\minnt\q160765803-minint4-85fac4faadc7
 > 	void host_InitializeTib(void);
 > 	host_InitializeTib();
 > #endif
+--- NT4\private\mvdm\softpc.new\base\system\timer.c
++++ nt\private\mvdm\softpc.new\base\system\timer.c
+2061c2061
+< #ifndef MONITOR
+---
+> #ifndef i386

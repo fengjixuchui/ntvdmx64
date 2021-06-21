@@ -1,9 +1,5 @@
 /* Quickly hacked together totally vandalized version of SoundFX2000 FM emulator */
 
-#define TRACE(x,y)
-#define ASSERT(x) 
-
-
 /****************************************************************************
  * DS.C                                                                     *
  * Application: Part of SBVDD.DLL                                           *
@@ -71,6 +67,7 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
+
 
 typedef HRESULT (WINAPI* DIRECTSOUNDCREATEPROC)(LPGUID, LPDIRECTSOUND*, IUnknown FAR *);
 DIRECTSOUNDCREATEPROC DirectSoundCreateProc;

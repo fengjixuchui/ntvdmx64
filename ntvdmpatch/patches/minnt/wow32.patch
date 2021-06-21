@@ -1,3 +1,16 @@
+--- NT4\private\mvdm\wow32\precomp.h
++++ nt\private\mvdm\wow32\precomp.h
+19a20,27
+> // WOW32 should compile as NT 6 for best compatibility with newer systems 
+> #undef WINVER
+> #define WINVER 0x600
+> #undef _WIN32_IE 
+> #define _WIN32_IE 0x0601
+> #undef _WIN32_WINNT
+> #define _WIN32_WINNT 0x600
+> #define WSABASEERR 10000    // New SDK has WSA error codes defined in winerror.h, prevent inclusion as we include winsock.h 
+115a124
+> #include "wsyslevel.h"
 --- NT4\private\mvdm\wow32\hack.c
 +++ nt\private\mvdm\wow32\hack.c
 201a202,205
@@ -126,7 +139,7 @@
 >     {
 >         RELEASE_THUNKLOCK
 >         //MsgWaitForMultipleObjects(0, NULL, FALSE, 0, QS_ALLINPUT);
->         Sleep(0);
+>         SwitchToThread();
 >     }
 > #endif
 > 
@@ -157,8 +170,9 @@
 >     DECLARE_THUNKLOCK
 >     LRESULT lResult;
 > #endif
-1904a1971,1982
+1904a1971,1989
 > #ifdef W10
+>         if ( WM_DDE_EXECUTE != mpex.uMsg )
 >         {
 >             DWORD count;
 >             ReleaseThunkLock(&count);
@@ -169,14 +183,20 @@
 >                 LOGDEBUG(LOG_ALWAYS,("BUGBUG: SendMessage(%p,%d,%04x,%08x,uTimeout=1000ms) timed out.\n", hwnd, mpex.uMsg, mpex.uParam, mpex.lParam));
 >             }
 >         }
+>         else
+>         {
+>             // WM_DDE_EXECUTE should be Posted, therefore Post it and wait 
+>             mpex.lReturn = PostMessage(hwnd, mpex.uMsg, mpex.uParam, mpex.lParam);
+>             WU32WaitMessage(NULL);
+>         }
 > #else
-1905a1984
+1905a1991
 > #endif
-2177a2257
+2177a2264
 >     DECLARE_THUNKLOCK
-2180a2261
+2180a2268
 >     RELEASE_THUNKLOCK
-2184a2266
+2184a2273
 >     RESTORE_THUNKLOCK
 --- NT4\private\mvdm\wow32\wkman.c
 +++ nt\private\mvdm\wow32\wkman.c
@@ -236,28 +256,36 @@
 > #ifndef W10 // Do not assert, as this constellation can occur due to InputIdle logic for ghevWaitCreatorThread
 1066a1115
 > #endif
-1320c1369
+1292a1342,1344
+> #ifdef W10
+>     BOOL fWOA = FALSE;
+> #endif
+1317a1370,1372
+> #ifdef W10
+>         fWOA = TRUE;
+> #endif
+1320c1375
 <     CURRENTPTD() = &td;
 ---
 >     SETCURRENTPTD(&td);
-1505,1508c1554
+1505,1508c1560
 <         
 <         // FIXME: Enable the following when we are ready.
 <         gfTaskContinue = TRUE;
 <         //gfTaskContinue = CheckAppHelpInfo(&td,szFilePath,szModName);
 ---
 >         gfTaskContinue = CheckAppHelpInfo(&td,szFilePath,szModName);
-1561c1607
+1561c1613
 < #ifdef i386
 ---
 > #ifdef i386xx
-1569a1616
+1569a1622
 > #ifndef W10 /* Unfortunetely, no NtUserInitTask support... */
-1604a1652,1654
+1604a1658,1660
 > #else
 >         {
 >             static BOOL bFirstCall = TRUE;
-1605a1656,1670
+1605a1662,1676
 >             if (bFirstCall)
 >             {
 >                 HMODULE hUxTheme = GetModuleHandle("uxtheme.dll");
@@ -273,27 +301,28 @@
 >         }
 >         fRet = FALSE;
 > #endif
-1607a1673
+1607a1679
 >         td.hThread = hThread;
-1626a1693,1694
+1626a1699,1700
 > #ifdef W10
->             SetTimer(NULL, 0, 10, InputIdleCB);
-1627a1696,1697
+>             if (!fWOA) SetTimer(NULL, 0, 10, InputIdleCB);
+1627a1702,1704
 >             _EnterWin16Lock();
+>             if (fWOA) {WOW32VERIFY(SetEvent(ghevWaitCreatorThread));}
 > #else
-1628a1699
+1628a1706
 > #endif
-1631d1701
+1631d1708
 <         td.hThread = hThread;
-1832c1902
+1832c1909
 <     CURRENTPTD() = &td;
 ---
 >     SETCURRENTPTD(&td);
-1959c2029
+1959c2036
 < #ifdef i386
 ---
 > #ifdef i386xx
-1967,1971c2037,2039
+1967,1971c2044,2046
 <     // FIXME: Enable the following when we are ready.
 <     /*
 <     if(ptd->pWOWCompatFlagsEx_Info) {
@@ -303,7 +332,7 @@
 >     if(ptd->pWOWCompatFlagsEx_Info) {
 >        FreeFlagInfo(ptd->pWOWCompatFlagsEx_Info);
 >     }
-1973,1976c2041,2043
+1973,1976c2048,2050
 <     if(ptd->pWOWCompatFlags2_Info) {
 <        FreeFlagInfo(ptd->pWOWCompatFlags2_Info);
 <     }
@@ -312,12 +341,12 @@
 >     if(ptd->pWOWCompatFlags2_Info) {
 >        FreeFlagInfo(ptd->pWOWCompatFlags2_Info);
 >     }
-2170a2238,2241
+2170a2245,2248
 > #ifdef W10
 >     _LeaveWin16Lock();
 > 	if (CURRENTPTD()->yield_event) CloseHandle(CURRENTPTD()->yield_event);
 > #endif
-2237a2309,2316
+2237a2316,2323
 > #ifdef W10
 >     _LeaveWin16Lock();
 >     if (ptd->yield_event)
@@ -326,17 +355,21 @@
 > 		ptd->yield_event = NULL;
 > 	}
 > #endif
-2378a2458
+2378a2465
 > #if 0	// leecher1337: Seems to be always be 0 on XP and above? Call Fritz!
-2382a2463
+2382a2470
 > #endif
-3028a3110
+3028a3117
 >     DECLARE_THUNKLOCK
-3088a3171
+3088a3178
 >             RELEASE_THUNKLOCK
-3100a3184
+3100a3191
 >             RESTORE_THUNKLOCK
-6095,6099c6179,6182
+3218c3309
+<             *pch++ = *pSrc++;
+---
+>             *pch++ = *pSrc++; i++;
+6095,6099c6186,6189
 <         // FIXME: Enable the following when we are ready.
 <         /*if (WOWCSIDL_AllUsers == pMatchMapPath->dwCLSID) {
 <              cb = sizeof(szBuf);
@@ -542,7 +575,7 @@
 > #ifdef W10
 >     else
 >     {
->         x64SetClassLongByClassname(HMODINST32(t1.hInstance), pszClass, GCL_MY_WNDPROC, lpfnWndProc);
+>         x64SetClassLongByClassname(HMODINST32(LOWORD(t1.hInstance)), pszClass, GCL_MY_WNDPROC, lpfnWndProc);
 >     }
 > #endif
 652c818
@@ -579,26 +612,47 @@
 >             ul = SetClassWord(hwnd, iOffset + (iOffset>=0?GWL_OFFSET:0), (WORD)ul);
 --- NT4\private\mvdm\wow32\wow32.c
 +++ nt\private\mvdm\wow32\wow32.c
-96a97,101
+57,59c57,59
+< CHAR    szLogFile[128];
+< int     fLog;
+< HANDLE  hfLog;
+---
+> __declspec(dllexport) CHAR    szLogFile[128];
+> __declspec(dllexport) int     fLog;
+> __declspec(dllexport) HANDLE  hfLog;
+71c71
+< INT     iLogLevel;           // logging level;  0 implies none
+---
+> __declspec(dllexport) INT     iLogLevel;           // logging level;  0 implies none
+95a96
+> CRITICAL_SECTION csLog;
+96a98,102
 > #ifdef W10
 > #include "wtask.h"
 > DWORD gdwTLSWOW32Reserved;
-> ATOM  gidWNDPROC16, gidDLGPROC16;
+> ATOM  gidWNDPROC16, gidDLGPROC16, gidDLGFLAG16;
 > #endif
-133c138
+133c139
 < #ifndef _X86_
 ---
 > #ifndef _X86xx_
-409a415,418
+344a351,353
+>         
+>         // Critical section for circular log buffer
+>         InitializeCriticalSection(&csLog);
+408a418
+>         DeleteCriticalSection(&csLog);
+409a420,424
 > #ifdef W10
 >         GlobalDeleteAtom(gidWNDPROC16);
 >         GlobalDeleteAtom(gidDLGPROC16);
+>         GlobalDeleteAtom(gidDLGFLAG16);
 > #endif
-625c634
+625c640
 < #ifndef _X86_
 ---
 > #ifndef _X86xx_
-691a701,720
+691a707,738
 > #ifdef W10
 >     pfnOut.pfnYieldTask = (PFNYIELDTASK)xxxUserYield;
 > 	pfnOut.pfnDirectedYield = (PFNDIRECTEDYIELD)xxxDirectedYield;
@@ -608,36 +662,58 @@
 >     TlsSetValue(gdwTLSWOW32Reserved, ptd);
 >     gidWNDPROC16 = GlobalAddAtom("WNDPROC16");
 >     gidDLGPROC16 = GlobalAddAtom("DLGPROC16");
->     if (GetEnvironmentVariableOem("WOWTRACE", szLogFile, sizeof(szLogFile)))
-> 	{
-> 		char szLogLvl[32];
-> 		if (GetEnvironmentVariableOem("WOWLOGLVL", szLogLvl, sizeof(szLogLvl)))
-> 			iLogLevel = atoi(szLogLvl);
-> 		fLog = 2;
-> 	}
+>     gidDLGFLAG16 = GlobalAddAtom("DLGFLAG16");
+> #ifdef DEBUG
+>     {
+>         char szLogLvl[32];
+>         
+>         if (GetEnvironmentVariableOem("WOWLOGLVL", szLogLvl, sizeof(szLogLvl)))
+>         {
+>             iLogLevel = atoi(szLogLvl);
+>             if (GetEnvironmentVariableOem("WOWTRACE", szLogFile, sizeof(szLogFile)))
+>                 fLog = 2;
+>             else
+>                 flOptions |= OPT_DEBUG;
+>         }
+>         if (GetEnvironmentVariableOem("WOWLOGFILTER", szLogLvl, sizeof(szLogLvl)))
+>         {
+>             fLogFilter = strtoul(szLogLvl, NULL, 10);
+>         }
+>     }
+> #endif
 >     // create dummy menu window, something like this exists on windows xp created by csrss
 >     // but is missing on windows starting with Win 7/conhost
 >     CreateWindowExA(0x181, "#32768", "", 0x84800000, 0, 0, 0, 0, NULL, NULL, NULL, NULL);
 > #else
-692a722
+692a740
 > #endif
-1944c1974
+1806,1807c1854,1855
+<         fDebuggerAttached = NT_SUCCESS(Status) && (MyDebugPort != NULL);
+< 
+---
+>         fDebuggerAttached = NT_SUCCESS(Status) && (MyDebugPort != NULL) ? TRUE : DbgIsDebuggee();
+>         
+1944c1992
 < #ifdef _X86_
 ---
 > #ifdef _X86xx_
-2136c2166
+2136c2184
 <                                    FILE_SHARE_WRITE,
 ---
 >                                    FILE_SHARE_WRITE | FILE_SHARE_READ,
+2161a2210
+>     EnterCriticalSection(&csLog);
+2177a2227
+>     LeaveCriticalSection(&csLog);
 --- NT4\private\mvdm\wow32\wudlg.c
 +++ nt\private\mvdm\wow32\wudlg.c
-22a23,75
+22a23,79
 > #ifdef W10
 > struct init_param {
 > 	LPARAM lParam;
 > 	WNDPROC  vpDlgProc;
 > };
-> volatile VPWNDPROC gvpWndProc16 = NULL;
+> volatile VPWNDPROC gvpWndProc16 = 0;
 > 
 > 
 > BOOL CALLBACK W32Win16DlgDispProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -645,24 +721,28 @@
 > 	VPWNDPROC vpWndProc16;
 > 	BOOL bRet;
 > 
-> 	if (uMsg == WM_INITDIALOG)
+> 	vpWndProc16 = (VPWNDPROC)GetProp(hwndDlg, (LPCTSTR)gidDLGPROC16);
+> 	if (uMsg == WM_INITDIALOG && (!vpWndProc16 || GetProp(hwndDlg, (LPCTSTR)gidDLGFLAG16)))
 > 	{
 > 		struct init_param *param = (struct init_param*)lParam;
 > 		
 > 		SetProp(hwndDlg, (LPCTSTR)gidDLGPROC16, (HANDLE)param->vpDlgProc);
-> 		vpWndProc16 = param->vpDlgProc;
+> 		vpWndProc16 = (volatile VPWNDPROC)param->vpDlgProc;
 > 		lParam = param->lParam;
+> 		free_w(param);
 > 	}
 > 	else
 > 	{
-> 		vpWndProc16 = (VPWNDPROC)GetProp(hwndDlg, (LPCTSTR)gidDLGPROC16);
 > 		if (!vpWndProc16 && gvpWndProc16)
 > 		{
 > 			/* First set it to global WndProc until we get the real one in WM_INITDIALOG 
 > 			 * Better than NULL
 > 			 */
 > 			SetProp(hwndDlg, (LPCTSTR)gidDLGPROC16, (HANDLE)gvpWndProc16);
-> 			gvpWndProc16 = NULL;
+> 			SetProp(hwndDlg, (LPCTSTR)gidDLGFLAG16, (HANDLE)1);
+> 			vpWndProc16 = gvpWndProc16;
+> 			gvpWndProc16 = 0;
+> 			LOGDEBUG(LOG_ALWAYS, ("W32Win16DlgDispProc: hWnd %x: vpWndProc=NULL!\n", hwndDlg)); 
 > 		}
 > 	}
 > 	if (!vpWndProc16)
@@ -685,78 +765,78 @@
 > 
 > 
 > 
-142a196,197
+142a200,201
 >     LPARAM   lParam;
 >     DECLARE_THUNKLOCK
-172a228,238
+172a232,242
 > #ifdef W10
->         struct init_param param;
+>         struct init_param *param = malloc_w(sizeof(struct init_param));
 > 
->         param.lParam = (LPARAM) DWORD32(parg16->f5);
->         param.vpDlgProc = gvpWndProc16 = vpDlgProc;
->         lParam = (LPARAM)&param;
+>         param->lParam = (LPARAM) DWORD32(parg16->f5);
+>         param->vpDlgProc = (WNDPROC)gvpWndProc16 = vpDlgProc;
+>         lParam = (LPARAM)param;
 >         vpDlgProc = (WNDPROC)W32Win16DlgDispProc;
 >         RELEASE_THUNKLOCK
 > #else
 >         lParam = (LPARAM) DWORD32(parg16->f5);
 > #endif
-179c245
+179c249
 <                             (LPARAM) DWORD32(parg16->f5), SCDLG_ANSI));
 ---
 >                             lParam, SCDLG_ANSI));
-185c251
+185c255
 <                             (LPARAM) DWORD32(parg16->f5),  SCDLG_CLIENT | SCDLG_ANSI | SCDLG_NOREVALIDATE));
 ---
 >                             lParam,  SCDLG_CLIENT | SCDLG_ANSI | SCDLG_NOREVALIDATE));
-190a257
+190a261
 >         RESTORE_THUNKLOCK
-598a666
+598a670
 >     DECLARE_THUNKLOCK
-603a672
+603a676
 >     RELEASE_THUNKLOCK
-617a687
+617a691
 >     RESTORE_THUNKLOCK
-751a822
+751a826
 >     DECLARE_THUNKLOCK
-754a826
+754a830
 >     RELEASE_THUNKLOCK
-760a833
+760a837
 >     RESTORE_THUNKLOCK
-806a880
+806a884
 >     DECLARE_THUNKLOCK
-811a886
+811a890
 >     RELEASE_THUNKLOCK
-817a893
+817a897
 >     RESTORE_THUNKLOCK
-964a1041
+964a1045
 >     DECLARE_THUNKLOCK
-987a1065
+987a1069
 >     RELEASE_THUNKLOCK
-991a1070
+991a1074
 >     RESTORE_THUNKLOCK
-1030a1110
+1030a1114
 >     DECLARE_THUNKLOCK
-1033a1114
+1033a1118
 >     RELEASE_THUNKLOCK
-1037a1119
+1037a1123
 >     RESTORE_THUNKLOCK
-1229a1312
+1229a1316
 >     DECLARE_THUNKLOCK
-1247a1331
+1247a1335
 >     RELEASE_THUNKLOCK
-1253a1338
+1253a1342
 >     RESTORE_THUNKLOCK
-1298a1384
+1298a1388
 >     DECLARE_THUNKLOCK
-1303a1390
+1303a1394
 >     RELEASE_THUNKLOCK
-1309a1397
+1309a1401
 >     RESTORE_THUNKLOCK
-1343a1432
+1343a1436
 >     DECLARE_THUNKLOCK
-1353a1443
+1353a1447
 >     RELEASE_THUNKLOCK
-1358a1449
+1358a1453
 >     RESTORE_THUNKLOCK
 --- NT4\private\mvdm\wow32\wuwind.c
 +++ nt\private\mvdm\wow32\wuwind.c
@@ -765,6 +845,10 @@
 ---
 > 
 >     hwnd32 = x64CreateWindowEx(
+760c761
+<                HWND32(parg16->hwndParent),
+---
+>                (HWND)FULLHWND32(parg16->hwndParent),
 763,764c764
 <                vpparam,
 <                CW_FLAGS_ANSI);
@@ -791,19 +875,19 @@
 >                 switch ( iOffset )
 >                 {
 >                     case DWL_DLGPROC:
->                         if (dwWndProc32Cur == W32Win16DlgDispProc)
->                             dwWndProc32Cur = GetProp(HWND32(parg16->f1), (LPCTSTR)gidDLGPROC16);
+>                         if (dwWndProc32Cur == (DWORD)W32Win16DlgDispProc)
+>                             dwWndProc32Cur = (DWORD)GetProp(HWND32(parg16->f1), (LPCTSTR)gidDLGPROC16);
 >                         break;
 >                     case GWL_WNDPROC:
->                         if (dwWndProc32Cur == W32Win16WndDispProc)
->                             dwWndProc32Cur = GetProp(HWND32(parg16->f1), (LPCTSTR)gidWNDPROC16);
+>                         if (dwWndProc32Cur == (DWORD)W32Win16WndDispProc)
+>                             dwWndProc32Cur = (DWORD)GetProp(HWND32(parg16->f1), (LPCTSTR)gidWNDPROC16);
 >                         break;
 >                 }
 > #endif
 1610c1627
 <     dwThreadID = GetWindowThreadProcessId(HWND32(parg16->f1), &dwProcessID);
 ---
->     dwThreadID = GetWindowThreadProcessId(FULLHWND32(parg16->f1), &dwProcessID);
+>     dwThreadID = GetWindowThreadProcessId((HWND)FULLHWND32(parg16->f1), &dwProcessID);
 1665a1683
 >     DECLARE_THUNKLOCK
 1670a1689
@@ -859,18 +943,18 @@
 >             switch ( iOffset )
 >             {
 >                 case DWL_DLGPROC:
->                     if (dwWndProc32Old == W32Win16DlgDispProc)
->                         dwWndProc32Old = GetProp(HWND32(parg16->f1), (LPCTSTR)gidDLGPROC16);
+>                     if (dwWndProc32Old == (DWORD)W32Win16DlgDispProc)
+>                         dwWndProc32Old = (DWORD)GetProp(HWND32(parg16->f1), (LPCTSTR)gidDLGPROC16);
 >                     else
->                         SetWindowLong(HWND32(parg16->f1), iOffset, W32Win16DlgDispProc);
->                     SetProp(HWND32(parg16->f1), gidDLGPROC16, (HANDLE)l);
+>                         SetWindowLong(HWND32(parg16->f1), iOffset, (LPARAM)W32Win16DlgDispProc);
+>                     SetProp(HWND32(parg16->f1), (LPCTSTR)gidDLGPROC16, (HANDLE)l);
 >                     break;
 >                 case GWL_WNDPROC:
->                     if (dwWndProc32Old == W32Win16WndDispProc)
->                         dwWndProc32Old = GetProp(HWND32(parg16->f1), (LPCTSTR)gidWNDPROC16);
+>                     if (dwWndProc32Old == (DWORD)W32Win16WndDispProc)
+>                         dwWndProc32Old = (DWORD)GetProp(HWND32(parg16->f1), (LPCTSTR)gidWNDPROC16);
 >                     else
->                         SetWindowLong(HWND32(parg16->f1), iOffset, W32Win16WndDispProc);
->                     SetProp(HWND32(parg16->f1), gidWNDPROC16, (HANDLE)l);
+>                         SetWindowLong(HWND32(parg16->f1), iOffset, (LPARAM)W32Win16WndDispProc);
+>                     SetProp(HWND32(parg16->f1), (LPCTSTR)gidWNDPROC16, (HANDLE)l);
 >                     break;
 >             }
 > #else
@@ -888,48 +972,44 @@
 >                 goto SWL_Cleanup;
 2245d2292
 <             }
-2306c2353,2358
+2306c2353,2354
 <         ul = SetWindowLong(HWND32(parg16->f1), iOffset, new);
 ---
->         ul = SetWindowLong(FULLHWND32(parg16->f1), iOffset, new);
-> 		{
-> 			ULONG chk = GetWindowLong(FULLHWND32(parg16->f1), iOffset);
-> 			WOW32ASSERT(chk == new);
-> 		}
+>         ul = SetWindowLong((HWND)FULLHWND32(parg16->f1), iOffset, new);
 > 
-2387a2440
+2387a2436
 >     DECLARE_THUNKLOCK
-2390a2444
+2390a2440
 >     RELEASE_THUNKLOCK
-2407a2462
+2407a2458
 >     RESTORE_THUNKLOCK
-2499a2555
+2499a2551
 >     DECLARE_THUNKLOCK
-2503a2560
+2503a2556
 >     RELEASE_THUNKLOCK
-2521a2579
+2521a2575
 >     RESTORE_THUNKLOCK
-2548a2607
+2548a2603
 >     DECLARE_THUNKLOCK
-2564a2624
+2564a2620
 >     RELEASE_THUNKLOCK
-2565a2626
+2565a2622
 >     RESTORE_THUNKLOCK
-2615c2676
+2615c2672
 <     PWW pww;
 ---
 >     PWW pww = NULL;
-2632c2693
+2632c2689
 <     hwnd = HWND32(parg16->f1);
 ---
->     hwnd = FULLHWND32(parg16->f1);
-2737a2799
+>     hwnd = (HWND)FULLHWND32(parg16->f1);
+2737a2795
 >     DECLARE_THUNKLOCK
-2740a2803
+2740a2799
 >     RELEASE_THUNKLOCK
-2743a2807
+2743a2803
 >     RESTORE_THUNKLOCK
-2776a2841,2964
+2776a2837,2960
 > 
 > enum ZBID
 > {
@@ -1010,7 +1090,7 @@
 >     {
 >         DWORD dwWinTid = GetWindowThreadProcessId(hWndParent, NULL);
 > 
->         if (!dwWinTid) dwWinTid = GetWindowThreadProcessId(FULLHWND32(hWndParent), NULL);
+>         if (!dwWinTid) dwWinTid = GetWindowThreadProcessId(hWndParent, NULL);
 >         fRelease = dwWinTid != GetCurrentThreadId();
 >     }
 >     if (fRelease) RELEASE_THUNKLOCK
@@ -1066,7 +1146,7 @@
 130c130
 <     lpmpex->hwnd   = HWND32(lpmpex->Parm16.WndProc.hwnd);
 ---
->     lpmpex->hwnd   = FULLHWND32(lpmpex->Parm16.WndProc.hwnd);
+>     lpmpex->hwnd   = (HWND)FULLHWND32(lpmpex->Parm16.WndProc.hwnd);
 1398,1399d1397
 <      // FIXME: Enable the following when we are ready.
 <      /*
@@ -1099,7 +1179,7 @@
 >  * support in NtUser
 >  */
 > extern BOOL x64GetClassInfo(HINSTANCE hInstance, LPCTSTR lpClassName, LPWNDCLASS lpWndClass);
-> extern ATOM  gidWNDPROC16, gidDLGPROC16;
+> extern ATOM  gidWNDPROC16, gidDLGPROC16, gidDLGFLAG16;
 > 
 > // Offsets to store our Win16 WndProc in class
 > #define GWL_OFFSET			sizeof(VPWNDPROC)
@@ -1135,136 +1215,578 @@
 >     HANDLE              yield_event;    /* yield event */
 >     HANDLE              yield_wait_event;/* yield event */
 > #endif
+306c353
+< extern HANDLE hfLog;        // log file handle, if any
+---
+> extern __declspec(dllexport) HANDLE hfLog;        // log file handle, if any
+310c357
+< extern INT    iLogLevel;    // logging level;  0 implies none
+---
+> extern __declspec(dllexport) INT    iLogLevel;    // logging level;  0 implies none
 381c428
 < #ifndef _X86_
 ---
 > #ifndef _X86xx_
-551c598
+382a430
+> #undef pNtVDMState // Wrongly set in vdm.h on x86 
+551c599
 < #ifndef _X86_  // emulated CPU
 ---
 > #ifndef _X86xx_  // emulated CPU
-561c608
+561c609
 < #ifndef _X86_
 ---
 > #ifndef _X86xx_
-808c855
+808c856
 < //PTERMSRVCORINIFILE gpfnTermsrvCORIniFile;
 ---
 > PTERMSRVCORINIFILE gpfnTermsrvCORIniFile;
-811a859,884
-> /* Functions missing from Win2k source */
-> #define IsWOWProc(proc) ((((DWORD)proc)&WNDPROC_WOWPROC)==WNDPROC_WOWPROC)
-> #define MarkWOWProc(p,pArg) (*(DWORD*)&pArg)=(DWORD)((DWORD)p & 0xFFF9FFFF | ((DWORD)p>>13) & 0x60000 | WNDPROC_WOWPROC);
-> #define UnMarkWOWProc(p,pArg) (*(DWORD*)&pArg)=(DWORD)(((DWORD)p<<13) ^ ((DWORD)p ^ ((DWORD)p<<13)) & 0x3FF9FFFF | 0x60000);
->  
-> #define WM_CHANGEUISTATE 0x0127
-> #define WM_UPDATEUISTATE 0x0128
-> #define WM_QUERYUISTATE  0x0129
-> #define LVN_HOTTRACK (LVN_FIRST-21)
-> #define PSN_HASHELP (PSN_FIRST-4)
-> #define PSN_GETOBJECT (PSN_FIRST-10)
-> #define PSN_TRANSLATEACCELERATOR (PSN_FIRST-12)
-> #define PSN_QUERYINITIALFOCUS (PSN_FIRST-13)
-> #define PSN_LASTCHANCEAPPLY (PSN_FIRST-14)
-> #define TVN_GETINFOTIPA (TVN_FIRST-13)
-> #define TVN_GETINFOTIPW (TVN_FIRST-14)
-> #define TVN_SINGLEEXPAND (TVN_FIRST-15)
-> #define GCL_WOWMENUNAME (-29)
-> #define FR_PRIVATE     0x10
-> #define FR_NOT_ENUM    0x20
-> #define WOW_CHOOSECOLOR	1
-> #define WOW_CHOOSEFONT	2
-> #define WOW_OPENFILENAME	3
-> #define WOW_PRINTDLG	4
-> #define WF_DIALOG_WINDOW	0x10000
-> #define HTW_IS16BIT	0x80000000
-812a886,887
-> #include <commctrl.h>
-> #include <wtypes.h>
-813a889,929
-> typedef struct tagNMKEY
-> {
->     NMHDR hdr;
->     UINT  nVKey;
->     UINT  uFlags;
-> } NMKEY, *LPNMKEY;
-> typedef struct tagNMTVGETINFOTIPA
-> {
->     NMHDR hdr;
->     LPSTR pszText;
->     int cchTextMax;
->     HTREEITEM hItem;
->     LPARAM lParam;
-> } NMTVGETINFOTIPA, *LPNMTVGETINFOTIPA;
-> #ifdef UNICODE
-> #define TVN_GETINFOTIP          TVN_GETINFOTIPW
-> #define NMTVGETINFOTIP          NMTVGETINFOTIPW
-> #define LPNMTVGETINFOTIP        LPNMTVGETINFOTIPW
-> #else
-> #define TVN_GETINFOTIP          TVN_GETINFOTIPA
-> #define NMTVGETINFOTIP          NMTVGETINFOTIPA
-> #define LPNMTVGETINFOTIP        LPNMTVGETINFOTIPA
-> #endif
-> typedef struct tagNMOBJECTNOTIFY {
->     NMHDR   hdr;
->     int     iItem;
-> #ifdef __IID_DEFINED__
->     const IID *piid;
-> #else
->     const void *piid;
-> #endif
->     void *pObject;
->     HRESULT hResult;
->     DWORD dwFlags;    // control specific flags (hints as to where in iItem it hit)
-> } NMOBJECTNOTIFY, *LPNMOBJECTNOTIFY;
-> typedef struct _DRAWPATRECT {
->         POINT ptPosition;
->         POINT ptSize;
->         WORD wStyle;
->         WORD wPattern;
-> } DRAWPATRECT, *PDRAWPATRECT;
-814a931,944
-> WINGDIAPI int  WINAPI AddFontResourceExA( LPCSTR name, DWORD fl, PVOID res);
-> WINGDIAPI int  WINAPI AddFontResourceExW( LPCWSTR name, DWORD fl, PVOID res);
-> #ifdef UNICODE
-> #define AddFontResourceEx  AddFontResourceExW
-> #else
-> #define AddFontResourceEx  AddFontResourceExA
-> #endif // !UNICODE
-> WINGDIAPI int  WINAPI GetRandomRgn (HDC hdc, HRGN hrgn, INT i);
-> 
-> /* End Functions missing from Win2k source */
-> 
-> 
-> 
-> 
 --- NT4\private\mvdm\wow32\wmdisp32.c
 +++ nt\private\mvdm\wow32\wmdisp32.c
-3257,3258d3256
+24a25,27
+> #include "comctrlp.h"
+> #include "commdlgp.h"
+> #include "shlapip.h"
+3242,3246c3245,3247
+< 
+<     // Caller already checked against NM_LAST.
+<     if (pnmhdr32->code >= LVN_LAST) {
+<         LOGDEBUG(2,("%sLVN_ %x\n", szLabel, pnmhdr32->code));
+<         switch (pnmhdr32->code) {
+---
+>     // WOWGetNotifySize in notify.c of comctl32 implements this, but
+>     // it never got used, even on x86 builds. Why...?
+>     switch (pnmhdr32->code) {
+3248,3261c3249,3268
+<             case LVN_ITEMCHANGING:
+<             case LVN_ITEMCHANGED:
+<             case LVN_INSERTITEM:
+<             case LVN_DELETEITEM:
+<             case LVN_DELETEALLITEMS:
+<             case LVN_COLUMNCLICK:
+<             case LVN_BEGINDRAG:
+<             case LVN_BEGINRDRAG:
+<             
 <             // FIXME: Enable the following when we are ready.
 <             /*
-3261d3258
+<             case LVN_HOTTRACK:
+<                 return sizeof(NM_LISTVIEW);
 <             */
-3286,3287d3282
+---
+>     // Generic comctl32 notifications
+>     case NM_OUTOFMEMORY:        return sizeof(NMHDR);   // not used
+> 
+>     case NM_CLICK:              return max(max(
+>                         sizeof(NMHDR),       // tab, treeview
+>                         sizeof(NMCLICK)),    // toolbar, statusbar
+>                         sizeof(NMITEMACTIVATE)); // listview
+> 
+>     case NM_DBLCLK:             return max(max(
+>                         sizeof(NMHDR),       // tab, treeview
+>                         sizeof(NMCLICK)),    // toolbar, statusbar
+>                         sizeof(NMITEMACTIVATE)); // listview
+> 
+> 
+>     case NM_RETURN:             return sizeof(NMHDR);
+> 
+>     case NM_RCLICK:             return max(max(
+>                         sizeof(NMHDR),       // header, listview report mode, treeview
+>                         sizeof(NMCLICK)),    // toolbar, statusbar
+>                         sizeof(NMITEMACTIVATE)); // listview icon mode
+3263,3295c3270,3336
+<             case LVN_BEGINLABELEDITA:
+<             case LVN_ENDLABELEDITA:
+<             case LVN_GETDISPINFOA:
+<             case LVN_SETDISPINFOA:
+<             case LVN_BEGINLABELEDITW:
+<             case LVN_ENDLABELEDITW:
+<             case LVN_GETDISPINFOW:
+<             case LVN_SETDISPINFOW:
+<                 return sizeof(LV_DISPINFO);
+< 
+<             case LVN_KEYDOWN:
+<                 return sizeof(LV_KEYDOWN);
+< 
+<             case LVN_ODCACHEHINT:
+<                 return sizeof(NM_CACHEHINT);
+< 
+<             case LVN_ODFINDITEMA:
+<             case LVN_ODFINDITEMW:
+<                 return sizeof(NM_FINDITEM);
+< 
+<             case LVN_ODSTATECHANGED:
+<                 return sizeof(NM_ODSTATECHANGE);
+< 
 <             // FIXME: Enable the following when we are ready.
 <             /*
-3290d3284
+<             case LVN_ITEMACTIVATE:
+<                 return sizeof(NMKEY);
 <             */
-3310,3311d3303
+< 
+<             default:
+<                 goto unknown_nmhdr_code;
+<         }
+<     }
+---
+>     case NM_RDBLCLK:            return max(max(
+>                         sizeof(NMHDR),       // treeview
+>                         sizeof(NMCLICK)),    // toolbar, statusbar
+>                         sizeof(NMITEMACTIVATE)); // listview
+> 
+>     case NM_SETFOCUS:           return sizeof(NMHDR);
+>     case NM_KILLFOCUS:          return sizeof(NMHDR);
+>     case NM_STARTWAIT:          return sizeof(NMHDR);      // not used
+>     case NM_ENDWAIT:            return sizeof(NMHDR);      // not used
+>     case NM_BTNCLK:             return sizeof(NMHDR);      // not used
+>     case NM_CUSTOMDRAW:         return sizeof(NMCUSTOMDRAW);
+>     case NM_HOVER:              return sizeof(NMHDR);
+>     case NM_NCHITTEST:          return sizeof(NMMOUSE);
+>     case NM_KEYDOWN:            return sizeof(NMKEY);
+>     case NM_RELEASEDCAPTURE:    return sizeof(NMHDR);
+>     case NM_SETCURSOR:          return sizeof(NMMOUSE);
+>     case NM_CHAR:               return sizeof(NMCHAR);
+>     case NM_TOOLTIPSCREATED:    return sizeof(NMTOOLTIPSCREATED);
+>     case NM_LDOWN:              return sizeof(NMCLICK);
+>     case NM_RDOWN:              return sizeof(NMCLICK);     // not used
+>     case NM_THEMECHANGED:       return sizeof(NMHDR);
+>     case NM_FONTCHANGED:        return sizeof(NM_FONTCHANGED);
+>     case NM_CUSTOMTEXT:         return max(sizeof(NMCUSTOMTEXT),
+>                                            sizeof(NMTVSTATEIMAGECHANGING));
+>     
+> 
+>     // Listview notifications
+>     case LVN_ITEMCHANGING:      return sizeof(NMLISTVIEW);
+>     case LVN_ITEMCHANGED:       return sizeof(NMLISTVIEW);
+>     case LVN_INSERTITEM:        return sizeof(NMLISTVIEW);
+>     case LVN_DELETEITEM:        return sizeof(NMLISTVIEW);
+>     case LVN_DELETEALLITEMS:    return sizeof(NMLISTVIEW);
+>     case LVN_BEGINLABELEDITA:   return sizeof(NMLVDISPINFOA);
+>     case LVN_BEGINLABELEDITW:   return sizeof(NMLVDISPINFOW);
+>     case LVN_ENDLABELEDITA:     return sizeof(NMLVDISPINFOA);
+>     case LVN_ENDLABELEDITW:     return sizeof(NMLVDISPINFOW);
+>     case LVN_COLUMNCLICK:       return sizeof(NMLISTVIEW);
+>     case LVN_BEGINDRAG:         return sizeof(NMITEMACTIVATE);
+>     case LVN_BEGINRDRAG:        return sizeof(NMITEMACTIVATE); // not used
+>     case LVN_ENDDRAG:           return sizeof(NMITEMACTIVATE); // not used
+>     case LVN_ENDRDRAG:          return sizeof(NMITEMACTIVATE); // not used
+>     case LVN_ODCACHEHINT:       return sizeof(NMLVCACHEHINT);
+>     case LVN_ODFINDITEMA:       return sizeof(NMLVFINDITEMA);
+>     case LVN_ODFINDITEMW:       return sizeof(NMLVFINDITEMW);
+>     case LVN_ITEMACTIVATE:      return sizeof(NMITEMACTIVATE);
+>     case LVN_ODSTATECHANGED:    return sizeof(NMLVODSTATECHANGE);
+> //  case LVN_PEN:               // Pen Windows slackers
+>     case LVN_HOTTRACK:          return sizeof(NMLISTVIEW);
+>     case LVN_GETDISPINFOA:      return sizeof(NMLVDISPINFOA);
+>     case LVN_GETDISPINFOW:      return sizeof(NMLVDISPINFOW);
+>     case LVN_SETDISPINFOA:      return sizeof(NMLVDISPINFOA);
+>     case LVN_SETDISPINFOW:      return sizeof(NMLVDISPINFOW);
+>     case LVN_KEYDOWN:           return sizeof(NMLVKEYDOWN);
+>     case LVN_MARQUEEBEGIN:      return sizeof(NMITEMACTIVATE);
+>     case LVN_GETINFOTIPA:       return sizeof(NMLVGETINFOTIPA);
+>     case LVN_GETINFOTIPW:       return sizeof(NMLVGETINFOTIPW);
+>     case LVN_GETEMPTYTEXTA:     return sizeof(NMLVDISPINFOA);
+>     case LVN_GETEMPTYTEXTW:     return sizeof(NMLVDISPINFOW);
+>     case LVN_INCREMENTALSEARCHA:return sizeof(NMLVFINDITEMA);
+>     case LVN_INCREMENTALSEARCHW:return sizeof(NMLVFINDITEMW);
+>     case LVN_COLUMNDROPDOWN:    return sizeof(NMLISTVIEW);
+>     case LVN_COLUMNOVERFLOWCLICK:return sizeof(NMLISTVIEW);
+>     case LVN_BEGINSCROLL:       return sizeof(NMLVSCROLL);
+>     case LVN_ENDSCROLL:         return sizeof(NMLVSCROLL);
+>     case LVN_LINKCLICK:         return sizeof(NMLVLINK);
+>     case LVN_GETEMPTYMARKUP:    return sizeof(NMLVEMPTYMARKUP);
+>     
+3297,3318c3338,3353
+<     if (pnmhdr32->code >= PSN_LAST) {
+<         LOGDEBUG(2,("%sPSN_ %x\n", szLabel, pnmhdr32->code));
+<         switch (pnmhdr32->code) {
+<             case PSN_SETACTIVE:
+<             case PSN_KILLACTIVE:
+<             case PSN_APPLY:
+<             case PSN_RESET:
+<             case PSN_HELP:
+<             case PSN_WIZBACK:
+<             case PSN_WIZNEXT:
+<             case PSN_WIZFINISH:
+<             case PSN_QUERYCANCEL:
+<             
 <             // FIXME: Enable the following when we are ready.
 <             /*
-3322d3313
+<             case PSN_TRANSLATEACCELERATOR:
+<             case PSN_QUERYINITIALFOCUS:
+<             case PSN_HASHELP:          // this one "is dead" - RaymondC
+<                 return sizeof(PSHNOTIFY);
+< 
+<             case PSN_GETOBJECT:
+<                 return sizeof(NMOBJECTNOTIFY);
+---
+>     // Property sheet notifications
+>     case PSN_SETACTIVE:         return sizeof(PSHNOTIFY);
+>     case PSN_KILLACTIVE:        return sizeof(PSHNOTIFY);
+>     case PSN_APPLY:             return sizeof(PSHNOTIFY);
+>     case PSN_RESET:             return sizeof(PSHNOTIFY);
+>     case PSN_HASHELP:           return sizeof(PSHNOTIFY);   // not used
+>     case PSN_HELP:              return sizeof(PSHNOTIFY);
+>     case PSN_WIZBACK:           return sizeof(PSHNOTIFY);
+>     case PSN_WIZNEXT:           return sizeof(PSHNOTIFY);
+>     case PSN_WIZFINISH:         return sizeof(PSHNOTIFY);
+>     case PSN_QUERYCANCEL:       return sizeof(PSHNOTIFY);
+>     case PSN_GETOBJECT:         return sizeof(NMOBJECTNOTIFY);
+>     case PSN_LASTCHANCEAPPLY:   return sizeof(PSHNOTIFY);
+>     case PSN_TRANSLATEACCELERATOR:
+>                                 return sizeof(PSHNOTIFY);
+>     case PSN_QUERYINITIALFOCUS: return sizeof(PSHNOTIFY);
+3320,3359c3355,3383
+<             case PSN_LASTCHANCEAPPLY:  // this is undocumented
+<                 return sizeof(NMHDR);  // (in widows\inc\prshtp.h)
 <             */
-3379,3380d3369
+< 
+<             default:
+<                 goto unknown_nmhdr_code;
+<         }
+<     }
+< 
+<     if (pnmhdr32->code >= HDN_LAST) {
+<         LOGDEBUG(2,("%sHDN_ %x\n", szLabel, pnmhdr32->code));
+<         switch (pnmhdr32->code) {
+<             case HDN_ITEMCHANGINGA:
+<             case HDN_ITEMCHANGEDA:
+<             case HDN_ITEMCLICKA:
+<             case HDN_DIVIDERDBLCLICKA:
+<             case HDN_BEGINTRACKA:
+<             case HDN_ENDTRACKA:
+<             case HDN_TRACKA:
+<             case HDN_ITEMCHANGINGW:
+<             case HDN_ITEMCHANGEDW:
+<             case HDN_ITEMCLICKW:
+<             case HDN_DIVIDERDBLCLICKW:
+<             case HDN_BEGINTRACKW:
+<             case HDN_ENDTRACKW:
+<             case HDN_TRACKW:
+<             case HDN_BEGINDRAG:
+<             case HDN_ENDDRAG:
+<             case HDN_ITEMDBLCLICKA:
+<             case HDN_ITEMDBLCLICKW:
+<                 return sizeof(HD_NOTIFY);
+< 
+<             case HDN_GETDISPINFOA:
+<             case HDN_GETDISPINFOW:
+<                 return sizeof(NMHDDISPINFO);
+< 
+<             default:
+<                 goto unknown_nmhdr_code;
+<         }
+<     }
+---
+>     // Header notifications
+>     case HDN_ITEMCHANGINGA:     return sizeof(NMHEADERA);
+>     case HDN_ITEMCHANGINGW:     return sizeof(NMHEADERW);
+>     case HDN_ITEMCHANGEDA:      return sizeof(NMHEADERA);
+>     case HDN_ITEMCHANGEDW:      return sizeof(NMHEADERW);
+>     case HDN_ITEMCLICKA:        return sizeof(NMHEADERA);
+>     case HDN_ITEMCLICKW:        return sizeof(NMHEADERW);
+>     case HDN_ITEMDBLCLICKA:     return sizeof(NMHEADERA);
+>     case HDN_ITEMDBLCLICKW:     return sizeof(NMHEADERW);
+>     case HDN_DIVIDERDBLCLICKA:  return sizeof(NMHEADERA);
+>     case HDN_DIVIDERDBLCLICKW:  return sizeof(NMHEADERW);
+>     case HDN_BEGINTRACKA:       return sizeof(NMHEADERA);
+>     case HDN_BEGINTRACKW:       return sizeof(NMHEADERW);
+>     case HDN_ENDTRACKA:         return sizeof(NMHEADERA);
+>     case HDN_ENDTRACKW:         return sizeof(NMHEADERW);
+>     case HDN_TRACKA:            return sizeof(NMHEADERA);
+>     case HDN_TRACKW:            return sizeof(NMHEADERW);
+>     case HDN_GETDISPINFOA:      return sizeof(NMHDDISPINFOA);
+>     case HDN_GETDISPINFOW:      return sizeof(NMHDDISPINFOW);
+>     case HDN_BEGINDRAG:         return sizeof(NMHEADER); // No strings
+>     case HDN_ENDDRAG:           return sizeof(NMHEADER); // No strings
+>     case HDN_FILTERCHANGE:      return sizeof(NMHEADER); // No strings
+>     case HDN_FILTERBTNCLICK:    return sizeof(NMHDFILTERBTNCLICK);
+>     case HDN_BEGINFILTEREDIT:   return sizeof(NMHEADER);
+>     case HDN_ENDFILTEREDIT:     return sizeof(NMHEADER);
+>     case HDN_ITEMSTATEICONCLICK:return sizeof(NMHEADER);
+>     case HDN_ITEMKEYDOWN:       return sizeof(NMHEADER);
+>     case HDN_DROPDOWN:          return sizeof(NMHEADER);
+>     case HDN_OVERFLOWCLICK:     return sizeof(NMHEADER);
+3361,3393c3385,3419
+<     if (pnmhdr32->code >= TVN_LAST) {
+<         LOGDEBUG(2,("%sTVN_ %x\n", szLabel, pnmhdr32->code));
+<         switch (pnmhdr32->code) {
+<             case TVN_SELCHANGINGA:
+<             case TVN_SELCHANGEDA:
+<             case TVN_ITEMEXPANDINGA:
+<             case TVN_ITEMEXPANDEDA:
+<             case TVN_BEGINDRAGA:
+<             case TVN_BEGINRDRAGA:
+<             case TVN_DELETEITEMA:
+<             case TVN_SELCHANGINGW:
+<             case TVN_SELCHANGEDW:
+<             case TVN_ITEMEXPANDINGW:
+<             case TVN_ITEMEXPANDEDW:
+<             case TVN_BEGINDRAGW:
+<             case TVN_BEGINRDRAGW:
+<             case TVN_DELETEITEMW:
+<             
 <             // FIXME: Enable the following when we are ready.
 <             /*
-3383d3371
+<             case TVN_SINGLEEXPAND:
+<                 return sizeof(NM_TREEVIEW);
 <             */
-3398,3399d3385
+< 
+<             case TVN_GETDISPINFOA:
+<             case TVN_SETDISPINFOA:
+<             case TVN_BEGINLABELEDITA:
+<             case TVN_ENDLABELEDITA:
+<             case TVN_GETDISPINFOW:
+<             case TVN_SETDISPINFOW:
+<             case TVN_BEGINLABELEDITW:
+<             case TVN_ENDLABELEDITW:
+<                 return sizeof(TV_DISPINFO);
+---
+>     // Treeview notifications
+>     case TVN_SELCHANGINGA:      return sizeof(NMTREEVIEWA);
+>     case TVN_SELCHANGINGW:      return sizeof(NMTREEVIEWW);
+>     case TVN_SELCHANGEDA:       return sizeof(NMTREEVIEWA);
+>     case TVN_SELCHANGEDW:       return sizeof(NMTREEVIEWW);
+>     case TVN_GETDISPINFOA:      return sizeof(NMTVDISPINFOA);
+>     case TVN_GETDISPINFOW:      return sizeof(NMTVDISPINFOW);
+>     case TVN_SETDISPINFOA:      return sizeof(NMTVDISPINFOA);
+>     case TVN_SETDISPINFOW:      return sizeof(NMTVDISPINFOW);
+>     case TVN_ITEMEXPANDINGA:    return sizeof(NMTREEVIEWA);
+>     case TVN_ITEMEXPANDINGW:    return sizeof(NMTREEVIEWW);
+>     case TVN_ITEMEXPANDEDA:     return sizeof(NMTREEVIEWA);
+>     case TVN_ITEMEXPANDEDW:     return sizeof(NMTREEVIEWW);
+>     case TVN_BEGINDRAGA:        return sizeof(NMTREEVIEWA);
+>     case TVN_BEGINDRAGW:        return sizeof(NMTREEVIEWW);
+>     case TVN_BEGINRDRAGA:       return sizeof(NMTREEVIEWA);
+>     case TVN_BEGINRDRAGW:       return sizeof(NMTREEVIEWW);
+>     case TVN_DELETEITEMA:       return sizeof(NMTREEVIEWA);
+>     case TVN_DELETEITEMW:       return sizeof(NMTREEVIEWW);
+>     case TVN_BEGINLABELEDITA:   return sizeof(NMTVDISPINFOA);
+>     case TVN_BEGINLABELEDITW:   return sizeof(NMTVDISPINFOW);
+>     case TVN_ENDLABELEDITA:     return sizeof(NMTVDISPINFOA);
+>     case TVN_ENDLABELEDITW:     return sizeof(NMTVDISPINFOW);
+>     case TVN_KEYDOWN:           return sizeof(NMTVKEYDOWN);
+>     case TVN_GETINFOTIPA:       return sizeof(NMTVGETINFOTIPA);
+>     case TVN_GETINFOTIPW:       return sizeof(NMTVGETINFOTIPW);
+>     case TVN_SINGLEEXPAND:      return sizeof(NMTREEVIEW); // No strings
+>     case TVN_ITEMCHANGINGA:     return sizeof(NMTVITEMCHANGE);
+>     case TVN_ITEMCHANGINGW:     return sizeof(NMTVITEMCHANGE);
+>     case TVN_ITEMCHANGEDA:      return sizeof(NMTVITEMCHANGE);
+>     case TVN_ITEMCHANGEDW:      return sizeof(NMTVITEMCHANGE);
+>     case TVN_ASYNCDRAW:         return sizeof(NMTVASYNCDRAW);
+> 
+>     // Rundll32 notifications
+>     case RDN_TASKINFO:          return sizeof(RUNDLL_NOTIFY);
+3395,3396c3421,3426
+<             case TVN_KEYDOWN:
+<                 return sizeof(TV_KEYDOWN);
+---
+>     // Tooltip notifications
+>     case TTN_GETDISPINFOA:      return sizeof(NMTTDISPINFOA);
+>     case TTN_GETDISPINFOW:      return sizeof(NMTTDISPINFOW);
+>     case TTN_SHOW:              return sizeof(NMTTSHOWINFO);
+>     case TTN_POP:               return sizeof(NMHDR);
+>     case TTN_LINKCLICK:         return 0;
+3398,3403c3428,3460
 <             // FIXME: Enable the following when we are ready.
 <             /*
-3403d3388
+<             case TVN_GETINFOTIPA:
+<             case TVN_GETINFOTIPW:
+<                 return sizeof(NMTVGETINFOTIP);
 <             */
+---
+>     // Tab control notifications
+> 
+>     // WE ARE SUCH HORRIBLE SLACKERS!
+>     //
+>     //  Even though commctrl.h says that the shell reserved range is from
+>     //  -580 to -589, shsemip.h defines SEN_FIRST as -550, which conflicts
+>     //  with TCN_KEYDOWN, so now TCN_KEYDOWN and SEN_DDEEXECUTE have the
+>     //  same value.
+> 
+>     case TCN_KEYDOWN:           return max(sizeof(NMTCKEYDOWN),
+>                                            sizeof(NMVIEWFOLDERW));
+>     case TCN_SELCHANGE:         return sizeof(NMHDR);
+>     case TCN_SELCHANGING:       return sizeof(NMHDR);
+>     case TCN_GETOBJECT:         return sizeof(NMOBJECTNOTIFY);
+>     case TCN_FOCUSCHANGE:       return sizeof(NMHDR);
+> 
+>     // Comdlg32 notifications
+>     case CDN_INITDONE:          return max(sizeof(OFNOTIFYA),
+>                                            sizeof(OFNOTIFYW));
+>     case CDN_SELCHANGE:         return max(sizeof(OFNOTIFYA),
+>                                            sizeof(OFNOTIFYW));
+>     case CDN_FOLDERCHANGE:      return max(sizeof(OFNOTIFYA),
+>                                            sizeof(OFNOTIFYW));
+>     case CDN_SHAREVIOLATION:    return max(sizeof(OFNOTIFYA),
+>                                            sizeof(OFNOTIFYW));
+>     case CDN_HELP:              return max(sizeof(OFNOTIFYA),
+>                                            sizeof(OFNOTIFYW));
+>     case CDN_FILEOK:            return max(sizeof(OFNOTIFYA),
+>                                            sizeof(OFNOTIFYW));
+>     case CDN_TYPECHANGE:        return max(sizeof(OFNOTIFYA),
+>                                            sizeof(OFNOTIFYW));
+>     case CDN_INCLUDEITEM:       return max(sizeof(OFNOTIFYEXA),
+>                                            sizeof(OFNOTIFYEXW));
+3405,3408c3462,3493
+<             default:
+<                 goto unknown_nmhdr_code;
+<         }
+<     }
+---
+>     // Toolbar notifications
+>     case TBN_GETBUTTONINFOA:    return sizeof(NMTOOLBARA);
+>     case TBN_GETBUTTONINFOW:    return sizeof(NMTOOLBARW);
+>     case TBN_BEGINDRAG:         return sizeof(NMTOOLBAR); // No strings
+>     case TBN_ENDDRAG:           return sizeof(NMTOOLBAR); // No strings
+>     case TBN_BEGINADJUST:       return sizeof(NMHDR);
+>     case TBN_ENDADJUST:         return sizeof(NMHDR);
+>     case TBN_RESET:             return sizeof(NMTBCUSTOMIZEDLG);
+>     case TBN_QUERYINSERT:       return sizeof(NMTOOLBAR); // No strings
+>     case TBN_QUERYDELETE:       return sizeof(NMTOOLBAR); // No strings
+>     case TBN_TOOLBARCHANGE:     return sizeof(NMHDR);
+>     case TBN_CUSTHELP:          return sizeof(NMHDR);
+>     case TBN_DROPDOWN:          return sizeof(NMTOOLBAR); // No strings
+>     case TBN_CLOSEUP:           return sizeof(NMHDR);     // not used
+>     case TBN_GETOBJECT:         return sizeof(NMOBJECTNOTIFY);
+>     case TBN_HOTITEMCHANGE:     return sizeof(NMTBHOTITEM);
+>     case TBN_DRAGOUT:           return sizeof(NMTOOLBAR); // No strings
+>     case TBN_DELETINGBUTTON:    return sizeof(NMTOOLBAR); // No strings
+>     case TBN_GETDISPINFOA:      return sizeof(NMTBDISPINFOA);
+>     case TBN_GETDISPINFOW:      return sizeof(NMTBDISPINFOW);
+>     case TBN_GETINFOTIPA:       return sizeof(NMTBGETINFOTIPA);
+>     case TBN_GETINFOTIPW:       return sizeof(NMTBGETINFOTIPW);
+>     case TBN_RESTORE:           return sizeof(NMTBRESTORE);
+> 
+>     // WE ARE SUCH HORRIBLE SLACKERS!
+>     //
+>     //  The TBN_FIRST/TBN_LAST range reserves 20 notifications for toolbar,
+>     //  and we overflowed that limit, so now UDN_DELTAPOS and
+>     //  TBN_SAVE have the same value.
+> 
+>     case TBN_SAVE:              return max(sizeof(NMTBSAVE),
+>                                            sizeof(NMUPDOWN));
+3410,3414c3495,3500
+<     if (pnmhdr32->code >= TTN_LAST) {
+<         LOGDEBUG(2,("%sTTN_ %x\n", szLabel, pnmhdr32->code));
+<         switch (pnmhdr32->code) {
+<             case TTN_NEEDTEXTA:        // (aka TTN_GETDISPINFO)
+<                 return sizeof(TOOLTIPTEXTA);
+---
+>     case TBN_INITCUSTOMIZE:     return sizeof(NMTBCUSTOMIZEDLG);
+>     case TBN_WRAPHOTITEM:       return sizeof(NMTBWRAPHOTITEM);
+>     case TBN_DUPACCELERATOR:    return sizeof(NMTBDUPACCELERATOR);
+>     case TBN_WRAPACCELERATOR:   return sizeof(NMTBWRAPACCELERATOR);
+>     case TBN_DRAGOVER:          return sizeof(NMTBHOTITEM);
+>     case TBN_MAPACCELERATOR:    return sizeof(NMCHAR);
+3416,3417c3502,3519
+<             case TTN_NEEDTEXTW:
+<                 return sizeof(TOOLTIPTEXTW);
+---
+>     // Monthcal control
+>     case MCN_SELCHANGE:         return sizeof(NMSELCHANGE);
+>     case MCN_GETDAYSTATE:       return sizeof(NMDAYSTATE);
+>     case MCN_SELECT:            return sizeof(NMSELECT);
+>     case MCN_VIEWCHANGE:        return sizeof(NMVIEWCHANGE);
+> 
+>     // Date/time picker control
+>     case DTN_DATETIMECHANGE:    return sizeof(NMDATETIMECHANGE);
+>     case DTN_USERSTRINGA:       return sizeof(NMDATETIMESTRINGA);
+>     case DTN_USERSTRINGW:       return sizeof(NMDATETIMESTRINGW);
+>     case DTN_WMKEYDOWNA:        return sizeof(NMDATETIMEWMKEYDOWNA);
+>     case DTN_WMKEYDOWNW:        return sizeof(NMDATETIMEWMKEYDOWNW);
+>     case DTN_FORMATA:           return sizeof(NMDATETIMEFORMATA);
+>     case DTN_FORMATW:           return sizeof(NMDATETIMEFORMATW);
+>     case DTN_FORMATQUERYA:      return sizeof(NMDATETIMEFORMATQUERYA);
+>     case DTN_FORMATQUERYW:      return sizeof(NMDATETIMEFORMATQUERYW);
+>     case DTN_DROPDOWN:          return sizeof(NMHDR);
+>     case DTN_CLOSEUP:           return sizeof(NMHDR);
+3419,3421c3521,3531
+<             case TTN_SHOW:
+<             case TTN_POP:
+<                 return sizeof(NMHDR);
+---
+>     // Comboex notifications
+>     case CBEN_GETDISPINFOA:     return sizeof(NMCOMBOBOXEXA);
+>     case CBEN_GETDISPINFOW:     return sizeof(NMCOMBOBOXEXW);
+>     case CBEN_INSERTITEM:       return sizeof(NMCOMBOBOXEX); // Random character set
+>     case CBEN_DELETEITEM:       return sizeof(NMCOMBOBOXEX); // No strings
+>     case CBEN_ITEMCHANGED:      return sizeof(NMCOMBOBOXEX); // Not used
+>     case CBEN_BEGINEDIT:        return sizeof(NMHDR);
+>     case CBEN_ENDEDITA:         return sizeof(NMCBEENDEDITA);
+>     case CBEN_ENDEDITW:         return sizeof(NMCBEENDEDITW);
+>     case CBEN_DRAGBEGINA:       return sizeof(NMCBEDRAGBEGINA);
+>     case CBEN_DRAGBEGINW:       return sizeof(NMCBEDRAGBEGINW);
+3423,3432c3533,3567
+<             default:
+<                 goto unknown_nmhdr_code;
+<         }
+<     }
+< 
+<     if (pnmhdr32->code >= TCN_LAST) {
+<         LOGDEBUG(2,("%sTCN_ %x\n", szLabel, pnmhdr32->code));
+<         switch (pnmhdr32->code) {
+<             case TCN_KEYDOWN:
+<                 return sizeof(TC_KEYDOWN);
+---
+>     // Rebar notifications
+>     case RBN_HEIGHTCHANGE:      return sizeof(NMHDR);
+>     case RBN_GETOBJECT:         return sizeof(NMOBJECTNOTIFY);
+>     case RBN_LAYOUTCHANGED:     return sizeof(NMHDR);
+>     case RBN_AUTOSIZE:          return sizeof(NMRBAUTOSIZE);
+>     case RBN_BEGINDRAG:         return sizeof(NMREBAR);
+>     case RBN_DELETINGBAND:      return sizeof(NMREBAR);
+>     case RBN_DELETEDBAND:       return sizeof(NMREBAR);
+>     case RBN_CHILDSIZE:         return sizeof(NMREBARCHILDSIZE);
+>     case RBN_CHEVRONPUSHED:     return sizeof(NMREBARCHEVRON);
+>     case RBN_SPLITTERDRAG:      return sizeof(NMREBARSPLITTER);
+>     case RBN_MINMAX:            return 0;
+>     case RBN_AUTOBREAK:         return sizeof(NMREBARAUTOBREAK);
+> 
+>     // IP address control notification
+>     case IPN_FIELDCHANGED:      return sizeof(NMIPADDRESS);
+> 
+>     // Status bar notifications
+>     case SBN_SIMPLEMODECHANGE:  return sizeof(NMHDR);
+> 
+>     // Pager control notifications
+>     case PGN_SCROLL:            return sizeof(NMPGSCROLL);
+>     case PGN_CALCSIZE:          return sizeof(NMPGCALCSIZE);
+>     case PGN_HOTITEMCHANGE:     return sizeof(NMPGHOTITEM);
+>     
+>     // Button control notifications
+>     case BCN_HOTITEMCHANGE:     return sizeof(NMBCHOTITEM);
+> 
+>     default:
+>         break;
+>     }
+> 
+>     //
+>     //  Categories of notifications we explicitly know nothing about.
+>     //
+3434,3440c3569,3570
+<             case TCN_SELCHANGE:
+<             case TCN_SELCHANGING:
+<                 return sizeof(NMHDR);
+< 
+<             default:
+<                 goto unknown_nmhdr_code;
+<         }
+---
+>     if (pnmhdr32->code >= WMN_LAST && pnmhdr32->code <= WMN_FIRST) { // Internet Mail and News
+>         return sizeof(NMHDR);
+3443,3454d3572
+<     if (pnmhdr32->code >= UDN_LAST) {
+<         LOGDEBUG(2,("%sUDN_ %x\n", szLabel, pnmhdr32->code));
+<         switch (pnmhdr32->code) {
+<             case UDN_DELTAPOS:
+<                 return sizeof(NM_UPDOWN);
+< 
+<             default:
+<                 goto unknown_nmhdr_code;
+<         }
+<     }
+< 
+< unknown_nmhdr_code:
 --- NT4\private\mvdm\wow32\wgdi.c
 +++ nt\private\mvdm\wow32\wgdi.c
 1686,1687d1685
@@ -1328,7 +1850,9 @@
 >     LONG   l4;
 --- NT4\private\mvdm\wow32\wuman.c
 +++ nt\private\mvdm\wow32\wuman.c
-189,194c189,191
+110d109
+<                 PSZ pszFormat;
+189,194c188,189
 <                         if ( i & 3 ) {
 <                             pszFormat = ", %s";
 <                         } else {
@@ -1336,9 +1860,8 @@
 <                         }
 <                         LOGDEBUG(LOG_TRACE, (pszFormat, aw32Msg[wMsg].lpszW32));
 ---
->                         if (aw32Msg[wMsg].lpszW32) pszFormat=( i & 3 )?", %s":"\n%s";
->                         else pszFormat=( i & 3 )?", UNKNOWN (%d)":"\n UNKNOWN (%d)";
->                         LOGDEBUG(LOG_TRACE, (pszFormat, aw32Msg[wMsg].lpszW32?aw32Msg[wMsg].lpszW32:wMsg));
+>                         if (aw32Msg[wMsg].lpszW32) {LOGDEBUG(LOG_TRACE, ((( i & 3 )?", %s":"\n%s"), aw32Msg[wMsg].lpszW32));}
+>                         else {LOGDEBUG(LOG_TRACE, ((( i & 3 )?", UNKNOWN (%d)":"\n UNKNOWN (%d)"), wMsg));}
 --- NT4\private\mvdm\wow32\wmtbl32.c
 +++ nt\private\mvdm\wow32\wmtbl32.c
 213c213
@@ -1605,15 +2128,6 @@
 ---
 >     {W32MSGFUN(WM32UNDOCUMENTED,      "WM_CE_ONLY_LAST")},
 >     {W32MSGFUN(WM32UNDOCUMENTED,      "WM_GETTITLEBARINFOEX")},
---- NT4\private\mvdm\wow32\wow32.def
-+++ nt\private\mvdm\wow32\wow32.def
-45a46,51
-> 
->     szLogFile
->     fLog
->     hfLog
->     iLogLevel
-> 
 --- NT4\private\mvdm\wow32\wcuricon.c
 +++ nt\private\mvdm\wow32\wcuricon.c
 1101c1101
@@ -1708,10 +2222,12 @@
 < #ifndef i386
 ---
 > #ifndef MONITOR
-120c120
+120,121c120,121
 < #ifndef i386
+<     Status = VdmFreeVirtualMemory( glpvDelayFree[gdwDelayFree]);
 ---
 > #ifndef MONITOR
+>     Status = VdmFreeVirtualMemory( (ULONG)glpvDelayFree[gdwDelayFree]);
 132c132
 < #ifndef i386
 ---
@@ -1740,10 +2256,6 @@
 >     RELEASE_THUNKLOCK
 418a424
 >     RESTORE_THUNKLOCK
-504c510
-< #ifndef i386
----
-> #ifndef MONITOR
 559a566
 >     DECLARE_THUNKLOCK
 663a671

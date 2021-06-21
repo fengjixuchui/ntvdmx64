@@ -1,28 +1,459 @@
+--- NT4\private\mvdm\softpc.new\dirs
++++ nt\private\mvdm\softpc.new\dirs
+26c26,27
+<         data
+---
+>         data \
+>         debugger
+--- NT4\private\mvdm\softpc.new\debugger\sources
++++ nt\private\mvdm\softpc.new\debugger\sources
+35c35
+< TARGETPATH=$(SOFTPC_ROOT)\debugger\$(_OBJ_DIR)
+---
+> TARGETPATH=obj
 --- NT4\private\mvdm\softpc.new\base\debug\trace.c
 +++ nt\private\mvdm\softpc.new\base\debug\trace.c
-493a496,497
+72a73
+> static pf_trace_hook trace_hook_func = NULL;
+295a297
+>      if (trace_hook_func) trace_hook_func(&dump_info);
+493a496,502
 > 
 >  /* No YODA in i386, so let use set this via env too */
->  start = host_getenv("SUB_IO_VERBOSE");
->  if (start) sub_io_verbose = atoi(start);
+>   start = host_getenv("SUB_IO_VERBOSE");
+>   if (start) sub_io_verbose = atoi(start);
+>  
+>   start = host_getenv("IO_VERBOSE");
+>   if (start) io_verbose = atoi(start);
+494a504,508
+> }
 > 
->  start = host_getenv("IO_VERBOSE");
->  if (start) io_verbose = atoi(start);
-> 
+> void trace_install_hook(pf_trace_hook hook)
+> {
+>     trace_hook_func = hook;
 --- NT4\private\mvdm\softpc.new\base\support\main.c
 +++ nt\private\mvdm\softpc.new\base\support\main.c
 183c183
 <   io_verbose = FALSE;
 ---
 >   //io_verbose = FALSE;  // Already set in trace_init() and is initialized with 0 globally anway
-209c209,212
-< #endif
----
+--- NT4\private\mvdm\softpc.new\host\src\nt_bop.c
++++ nt\private\mvdm\softpc.new\host\src\nt_bop.c
+13a14
+> #include <dbgsvc.h>
+328a330,353
+> #ifdef YODA
+>     UNALIGNED WORD  *stack;
+>     char *p;
+>     
+>     stack = (UNALIGNED WORD *)Sim32GetVDMPointer(
+>                         ((ULONG)getSS() << 16) + (ULONG)getSP(),
+>                         MAX_DBG_FRAME, (getMSW() & MSW_PE ? 1 : 0));
+>                         
+>     // Resembles WDEB386 API, may become handy some day...
+>     if (stack && (*stack & 0x4100) == 0x4100)
+>     {
+>         switch (*stack++)
+>         {
+>             case DBG_OUTCHAR:
+>                 printf("%c", (*stack & 0xFF));
+>                 break;
+>             case DBG_OUTSTR:
+>                 p = Sim32GetVDMPointer(((ULONG)stack[0] << 16) + (ULONG)stack[1],
+>                     256, (getMSW() & MSW_PE ? 1 : 0));
+>                 if (p) printf("%s", p);
+>                 break;
+>         }
+>     }      
 > #endif
-> #ifndef A3CPU
-> 	(VOID) setup_global_data_ptr();
-> #endif	/* not A3CPU */
-284,286d286
-< #ifndef A3CPU
-< 	(VOID) setup_global_data_ptr();
-< #endif	/* not A3CPU */
+754a780
+> #ifdef X86GFX
+762a789
+> #endif
+--- NT4\private\mvdm\vdmexts\dos.c
++++ nt\private\mvdm\vdmexts\dos.c
+411c411
+<         if (!READMEM((LPVOID)(GetIntelBase()+ppdb), &pdb, sizeof(pdb))) {
+---
+>         if (!READMEM((LPVOID)ppdb, &pdb, sizeof(pdb))) {
+--- NT4\private\mvdm\vdmexts\sym.c
++++ nt\private\mvdm\vdmexts\sym.c
+221c221,222
+<     WORD       *psegment
+---
+>     WORD       *psegment,
+>     SEGENTRY  **ppse
+236a238
+>         ppse     - pptr that receives SEGENTRY, if entry found in segtbl
+247a250
+>     if (ppse) *ppse = NULL;
+259a263
+>             if (ppse) *ppse = se;
+264c268,282
+< 
+---
+>     
+>     if (mode == V86_MODE)
+>     {
+>         se = GetSegtablePointer();
+>         while ( se ) {
+>             if (selector >= se->selector && selector <= se->selector + (se->length>>4)) {
+>                 ParseModuleName(szModule, se->szExePath);
+>                 *psegment = se->segment;
+>                 if (ppse) *ppse = se;
+>                 return TRUE;
+>             }
+>             se = se->Next;
+>         }
+>     }
+>     
+326a345
+>     SEGENTRY *se;
+333,334c352,354
+<     if (GetOwnerSegmentFromSelector(selector, mode, filename, &segment)) {
+<         return(pfnGetSymbol(filename,
+---
+>     if (GetOwnerSegmentFromSelector(selector, mode, filename, &segment, &se)) {
+>         sym_text += sprintf (sym_text, "%s!", filename);
+>         if (pfnGetSymbol(filename,
+340c360,363
+<                              dist));
+---
+>                              dist)) return TRUE;
+>         sprintf(sym_text-1, ": %04x:%04x", selector - (se?se->selector:0) + 0x1000, offset);
+>         *dist = 0;
+>         return TRUE;
+385c408
+<                                              module, psegment)) {
+---
+>                                              module, psegment, NULL)) {
+--- NT4\private\mvdm\vdmdbg\segment.c
++++ nt\private\mvdm\vdmdbg\segment.c
+214c214,215
+<     WORD Selector,
+---
+>     WORD Selector1,
+>     WORD Selector2,
+229c230
+<             (pSegEntry->segment == segment)) {
+---
+>             (pSegEntry->selector == Selector1)) {
+231c232
+<             pSegEntry->selector = Selector;
+---
+>             pSegEntry->selector = Selector2;
+241c242
+<     ModuleLoad(Selector, segment, length, szExePath);
+---
+>     ModuleLoad(Selector2, segment, length, szExePath);
+346c347
+<             V86SegmentMove(se.Selector2, se.Segment, se.Length, se.FileName);
+---
+>             V86SegmentMove(se.Selector1, se.Selector2, se.Segment, se.Length, se.FileName);
+369c370
+<         ModuleLoad(se.Selector1, 0, se.Length, se.FileName);
+---
+>         ModuleLoad(se.Selector1?se.Selector1:se.Segment, 0, se.Length, se.FileName);
+466c467
+<             if (pSegEntry->segment == 0 || pSegEntry->segment == SegNumber) {
+---
+>             if (pSegEntry->segment == SegNumber - 1) {
+--- NT4\private\mvdm\wow32\wow32.def
++++ nt\private\mvdm\wow32\wow32.def
+45a46,86
+> 
+> #if DBG
+> ; Debug symbols
+>     pDibInfoHead                DATA
+>     gptdTaskHead                DATA
+>     iLogLevel                   DATA
+>     DosWowData                  DATA
+>     aw32WOW                     DATA
+>     iCircBuffer                 DATA
+>     pachTmp                     DATA
+>     fLog                        DATA
+>     szLogFile                   DATA
+>     fDebugWait                  DATA
+>     pawfLogFunctionFilter       DATA
+>     fLogFilter                  DATA
+>     iLogFuncFiltIndex           DATA
+>     fLogTaskFilter              DATA
+>     lpCIAlias                   DATA
+>     gH16_deleted_count          DATA
+>     ghGdi16NextFree             DATA
+>     ghGdi16LastFree             DATA
+>     gMaxGdiHandlesPerProcess    DATA
+>     gLastAllowableIndex         DATA
+>     gFirstNonStockObject        DATA
+>     gwNextReclaimStart          DATA
+>     gdwPageCommitSize           DATA
+>     gprevNextFree               DATA
+>     gAllocatedHandleCount       DATA
+>     pGdiH16MappingTable         DATA
+>     pGdiH32MappingTable         DATA
+>     phDDEFirst                  DATA
+>     lpMemLeakStart              DATA
+>     tableoffsets                DATA
+>     iThunkTableMax              DATA
+>     pawThunkTables              DATA
+>     cAPIThunks                  DATA
+>     nModNames                   DATA
+>     iMsgMax                     DATA
+>     paw32Msg                    DATA
+>     fWMsgProfRT                 DATA
+> #endif
+--- NT4\private\mvdm\softpc.new\obj.vdm\ntvdm.src
++++ nt\private\mvdm\softpc.new\obj.vdm\ntvdm.src
+214a215
+>     DbgIsDebuggee
+281a283,296
+> 
+> ; Debug symbols
+> 	pSFTHead                DATA
+> 	pusCurrentPDB           DATA
+> 	DpmiInterruptHandlers   DATA
+> 	DpmiFaultHandlers       DATA
+> 	XmemHead                DATA
+> 	Ldt                     DATA
+> 	InitialVdmDbgFlags      DATA
+> 	InitialVdmTibFlags      DATA
+> 	VirtualIca              DATA
+> 	pVdmTraceInfo           DATA
+> 	nt_cpu_info             DATA
+> 	Start_of_M_area         DATA
+--- NT4\private\mvdm\softpc.new\host\src\nt_yoda.c
++++ nt\private\mvdm\softpc.new\host\src\nt_yoda.c
+42a43
+> #include <stdlib.h>
+46a48,49
+> #include "sas.h"
+> #include "vdmexts.h"
+75c78
+< #define MAX_CALL_STACK	128
+---
+> #define MAX_CALL_STACK	256
+140a144,147
+> LOCAL int do_dpmitr	IPT5(char *, str, char *, com, long, cs,
+> 			     long, ip, long, len);
+> LOCAL int do_vdmexts	IPT5(char *, str, char *, com, long, cs,
+> 			     long, ip, long, len);
+153,156c160,165
+< { "ecbt", do_ecbt,	"                        - enable call-back-tracing" },
+< { "dcbt", do_dcbt,	"                        - disable call-back-tracing" },
+< { "pcbt", do_pcbt,	"                        - print call-back-trace" },
+< { "ntsd", do_ntsd,	"                        - break to ntsd" }
+---
+> { "dpmitr",	do_dpmitr,  "                     - Toggle DOSX debug Dpmi tracing" },
+> { ".<cmd>", do_vdmexts, "                     - Execute vdmexts command, i.e. .help"},
+> { "ecbt",   do_ecbt,	"                     - enable call-back-tracing" },
+> { "dcbt",   do_dcbt,	"                     - disable call-back-tracing" },
+> { "pcbt",   do_pcbt,	"                     - print call-back-trace" },
+> { "ntsd",   do_ntsd,	"                     - break to ntsd" }
+365a375,377
+>     /* VDM extensions special */
+>     if (*com == '.') return do_vdmexts(str, com, cs, ip, len);
+>     
+1192a1205,1370
+> /*
+> =========================================================================
+> 
+> FUNCTION        : do_dpmitr
+> 
+> PURPOSE         : sets the dpmi tracing parameters of the dosx debug build
+> 
+> RETURNED STATUS : 0 for success, 1 for failure
+> 
+> NOTES           :
+> 
+> =======================================================================
+> */
+> LOCAL int do_dpmitr	IPT5(char *, str, char *, com, long, cs,
+> 			     long, ip, long, len)
+> {
+> 	static struct {
+> 		char *name;
+> 		IU16 *addr;
+> 		char *descr;
+> 	}
+> 	 trace_flags[] = 
+> 	{
+> 	 {"tracedos",     NULL, "Trace DOS calls:\n"
+> 		"    Trace levels: 1 - print AX on all calls except 3F, 40, 42 (read, write,\n"
+> 		"                      seek--Windows does so many of these...)\n"
+> 		"                  2 - like level 1, but includes 3F, 40, 42\n"
+> 		"                  3 - print all regs on all calls"
+> 	 },
+> 	 {"tracefault",   NULL, "Trace faults on MIPS, currently unused"},
+> 	 {"tracea20",     NULL, "Make sure that A20 is enabled"},
+> 	 {"tracebug",     NULL, "Debug INT 41h Debugger interface"},
+> 	 {"trapdos",      NULL, "Trap DOS calls"},
+> 	 {"tableslow",    NULL, "unused"},
+> 	 {"tracereflect", NULL, "Trace Interrupt reflector:\n"
+> 		"    Trace levels: 1 - Trace all Interrupt reflector calls\n"
+> 		"                  2 - Also trace call ends\n"
+> 		"                  3 - Also trace Reflector stack location"
+> 	 },
+> 	 {"tracemode",    NULL, "Trace Real/Protectedmode switches"}
+> 	};
+> 	int n, n_found, negate;
+> 	IU16 mask;
+> 	char *flag_name, *flag_val;
+> 
+> 	UNUSED(com);
+> 	UNUSED(cs);
+> 	UNUSED(ip);
+> 	UNUSED(len);
+> 	UNUSED(stop);
+> 
+> 	/*
+> 	 * Collect offsets of DOSX trace flags
+> 	 */
+> 	if (!trace_flags[0].addr)
+> 	{
+> 		LIN_ADDR lin = effective_addr(0x0F00, 0);
+> 		IU8 *pDOSXDS = getPtrToLinAddrByte(lin);
+> 		int i, j;
+> 
+> 		if (pDOSXDS)
+> 		{ 
+> 			for (i=0; i<0x4000; i++)
+> 			{
+> 				if (pDOSXDS[0] == 't' && strncmp(pDOSXDS, "tracedos", 8) == 0)
+> 				{
+> 					// Assuming these are in order, no searching
+> 					for (j=0; *pDOSXDS && j<sizeof(trace_flags)/sizeof(trace_flags[0]); j++)
+> 					{
+> 						if (!strcmp(trace_flags[j].name, pDOSXDS))
+> 						{
+> 							pDOSXDS += strlen(pDOSXDS) + 1;
+> 							trace_flags[j].addr = (IU16*)pDOSXDS;
+> 							pDOSXDS += sizeof(IU16);
+> 						}
+> 					}
+> 					break;
+> 				}
+> 				pDOSXDS++;
+> 			}
+> 		}
+> 		if (!trace_flags[sizeof(trace_flags)/sizeof(trace_flags[0])-1].addr)
+> 		{
+> 			printf ("DOSX trace flags not found I have, sure running a DEBUG build of DOSX you are?\n");
+> 			return (0);
+> 		}
+> 	}
+> 
+> 	/*
+> 	 * strip off command and get first flag name
+> 	 */
+> 	n_found = 0;
+> 	(void) strtok (str, " \t");
+> 
+> 	if (flag_name = strtok(NULL, " \t")) {
+> 		/*
+> 		 * Pick out symbolic flag name and see whether is is being set
+> 		 * or reset.
+> 	 	 */
+> 		n_found += 1;
+> 		negate = (flag_name[0] == '-');
+> 		if (negate)
+> 		{
+> 			flag_name += 1;
+> 			mask = 0;
+> 		}
+> 		else
+> 		{		
+> 			if (flag_val = strtok(NULL, " \t"))
+> 				mask = (IU16)atoi(flag_val);
+> 			else
+> 				mask = 1;
+> 		}
+> 
+> 		/*
+> 	 	 * Find flag and twiddle bits as appropriate.
+> 	 	 */
+> 		for (n = 0; n < sizeof(trace_flags)/sizeof(trace_flags[0]); n++)
+> 			if (!strcmp(flag_name, trace_flags[n].name) && trace_flags[n].addr) {
+> 				*trace_flags[n].addr = mask;
+> 				break;
+> 			}
+> 	}
+> 
+> 	/*
+> 	 * Print current trace flags if no recognised flags passed in command.
+> 	 * (or empty command line).
+> 	 */
+> 	if (n_found == 0) {
+> 		for (n = 0; n < sizeof(trace_flags)/sizeof(trace_flags[0]); n++) {
+> 			printf ("%-14s: %d\t%s\n", trace_flags[n].name,
+> 				trace_flags[n].addr ? *trace_flags[n].addr : 0,
+> 				trace_flags[n].descr);
+> 		}
+> 		printf ("\n\n");
+> 	}
+> 
+> 	return(0);
+> }
+> 
+> /*
+> =========================================================================
+> 
+> FUNCTION        : do_vdmexts
+> 
+> PURPOSE         : invokes a command from vdmexts extension
+> 
+> RETURNED STATUS : 0 for success, 1 for failure
+> 
+> NOTES           :
+> 
+> =======================================================================
+> */
+> LOCAL int do_vdmexts	IPT5(char *, str, char *, com, long, cs,
+> 			     long, ip, long, len)
+> {
+> 	UNUSED(cs);
+> 	UNUSED(ip);
+> 	UNUSED(len);
+> 	UNUSED(stop);
+> 
+>     VdmExtCommand(com + 1, str + strlen(com) + 1);
+>     return(0);
+> }
+> 
+> 
+--- NT4\private\mvdm\dos\v86\doskrnl\bios\sysinit1.asm
++++ nt\private\mvdm\dos\v86\doskrnl\bios\sysinit1.asm
+990c990
+<         mov     bx, 1                   ; bugbug: Hardcoded segment number
+---
+>         mov     di, 1                   ; bugbug: Hardcoded segment number
+--- NT4\private\mvdm\dbg\dbg.c
++++ nt\private\mvdm\dbg\dbg.c
+54a55,56
+> 
+> VOID VdmDbgAttach (VOID);
+91a94,102
+> #ifdef YODA
+>             if (!bDbgDebuggerLoaded)
+>             {
+>                 extern PVOID SetYodaVDMEventHandler(BOOL fEnable);
+> 
+>                 // No real debugger is attached, so let YODA handle all stuff
+>                 SetYodaVDMEventHandler(TRUE);
+>             }
+> #endif
+133a145
+>         pfnDbgDispatch      = (VOID (WINAPI *)(VOID)) GetProcAddress( hmodDBG, "xxxDbgDispatch" );
+--- NT4\private\mvdm\inc\dbgexp.h
++++ nt\private\mvdm\inc\dbgexp.h
+19a20,21
+> extern BOOL DbgIsDebuggee( VOID );
+> 
+--- NT4\private\mvdm\softpc.new\base\inc\trace.h
++++ nt\private\mvdm\softpc.new\base\inc\trace.h
+123a124,125
+> typedef int (*pf_trace_hook)(int *);
+> 
+126a129
+> extern void trace_install_hook(pf_trace_hook hook);
+135a139
+> extern void trace_install_hook();

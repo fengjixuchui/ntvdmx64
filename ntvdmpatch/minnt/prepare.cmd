@@ -32,6 +32,7 @@ md %minntfix%\NTOSBE-master\tools\x86\idw
 md %minntfix%\minnt\base\mvdm\wow16
 md %minntfix%\minnt\public\ddk\lib\x86
 md %minntfix%\minnt\public\internal\base\inc
+md %minntfix%\minnt\public\internal\shell\inc
 md %minntfix%\minnt\public\sdk\lib\x86
 md %minntfix%\minnt\public\sdk\inc
 md %minntfix%\minnt\base\mvdm\softpc.new\host\inc\alpha
@@ -39,10 +40,15 @@ md %minntfix%\minnt\base\mvdm\softpc.new\host\inc\mips
 md %minntfix%\minnt\base\mvdm\softpc.new\host\inc\ppc
 md %workdir%
 
+rem minnt SDK Update to Win XP/2003 SDK
+if exist ..\..\NTOSBE-master\src\public\sdk\inc\commdlg.h xcopy /y ..\..\NTOSBE-master\src\public\sdk\inc %minntfix%\minnt\public\sdk\inc\
+for %%a in (libcmt.lib msvcrt.lib ntdll.lib imagehlp.lib) do if exist ..\..\NTOSBE-master\src\public\sdk\lib\x86\%%~a xcopy /y ..\..\NTOSBE-master\src\public\sdk\lib\x86\%%~a %minntfix%\minnt\public\sdk\lib\x86\
+
 if not exist %minntfix%\minnt\public\ddk\lib\x86\umpdddi.lib goto doddk
 if not exist %minntfix%\minnt\public\sdk\lib\x86\winspool.lib goto doddk
 if not exist %minntfix%\minnt\public\sdk\lib\x86\userenv.lib goto doddk
 for %%a in (compstdui.h winddi.h winddiui.h) do if not exist "%minntfix%\minnt\public\oak\inc\%%~a" goto doddk
+if not exist %minntfix%\minnt\public\sdk\inc\commctrl.h goto doddk
 goto ddkok
 :doddk
 echo Need to extract DDK files.
@@ -51,6 +57,7 @@ if exist %workdir%\WDK\wxplibs_x86fre_cab001.cab (
 call :expandf %workdir%\WDK\wxplibs_x86fre_cab001.cab _umpdddi.lib_00315 %minntfix%\minnt\public\ddk\lib\x86\umpdddi.lib
 call :expandf %workdir%\WDK\wxplibs_x86fre_cab001.cab _winspool.lib_00345 %minntfix%\minnt\public\sdk\lib\x86\winspool.lib
 call :expandf %workdir%\WDK\wxplibs_x86fre_cab001.cab _userenv.lib_00322 %minntfix%\minnt\public\sdk\lib\x86\userenv.lib
+call :expandf %workdir%\WDK\wxplibs_x86fre_cab001.cab _shell32.lib_00284 %minntfix%\minnt\public\sdk\lib\x86\shell32.lib
 ) else goto ddkisoex
 if exist %workdir%\WDK\libs_x86fre_cab001.cab (
 rem For RegisterConsoleVDM with fewer parameters starting with Win7
@@ -59,15 +66,16 @@ rem For GetStringBitmapA
 call :expandf %workdir%\WDK\libs_x86fre_cab001.cab _gdi32.lib_00234 %minntfix%\minnt\public\sdk\lib\x86\gdi32.lib
 ) else goto ddkisoex
 
+if exist %workdir%\WDK\headers_cab001.cab (
+call :expandf %workdir%\WDK\headers_cab001.cab _COMMCTRL.H_00634 %minntfix%\minnt\public\sdk\inc\commctrl.h
 rem
 rem Current DDK headers not really working with build system/older headers, so we take the headers from
 rem old-src and adapt them
 rem
-rem if exist %workdir%\WDK\headers_cab001.cab (
 rem call :expandf %workdir%\WDK\headers_cab001.cab _compstui.h_00602 %minntfix%\minnt\public\oak\inc\compstui.h
 rem call :expandf %workdir%\WDK\headers_cab001.cab _winddi.h_00629 %minntfix%\minnt\public\oak\inc\winddi.h
 rem call :expandf %workdir%\WDK\headers_cab001.cab _winddiui.h_00630 %minntfix%\minnt\public\oak\inc\winddiui.h
-rem ) else goto ddkisoex
+) else goto ddkisoex
 goto ddkok
 :ddkisoex
 if not exist %workdir%\GRMWDK_EN_7600_1.ISO (
@@ -79,7 +87,7 @@ goto fini
 )
 call :expandiso GRMWDK_EN_7600_1.ISO WDK\wxplibs_x86fre_cab001.cab 
 call :expandiso GRMWDK_EN_7600_1.ISO WDK\libs_x86fre_cab001.cab
-rem call :expandiso GRMWDK_EN_7600_1.ISO WDK\headers_cab001.cab
+call :expandiso GRMWDK_EN_7600_1.ISO WDK\headers_cab001.cab
 goto redoddk
 
 :ddkok
@@ -138,20 +146,20 @@ echo You have to find this yourself on the Internet
 pause
 goto fini
 )
-7z x -y %workdir%\%OLDSRC% old-src\nt\private\windows\inc\gdispool.h old-src\nt\private\windows\spooler\inc\splapip.h old-src\nt\public\oak\inc\winddiui.h old-src\nt\private\sdktools\jetadmin\inc\winioctl.h old-src\nt\private\sdktools\jetadmin\inc\dsound.h old-src\nt\public\oak\inc\compstui.h %WOW16% old-src\nt\private\mvdm\softpc.new\host\inc\alpha old-src\nt\private\mvdm\softpc.new\host\inc\mips old-src\nt\private\mvdm\softpc.new\host\inc\ppc old-src\nt\private\mvdm\dpmi old-src\nt\private\mvdm\dpmi32 old-src\nt\private\mvdm\inc\intmac.inc old-src\nt\private\mvdm\inc\dpmi.h old-src\nt\private\mvdm\tools16\implib.exe old-src\nt\private\mvdm\tools16\rc16.exe old-src\nt\private\mvdm\tools16\rcpp.exe old-src\tools\x86\idw\sednew.exe old-src\nt\private\sdktools\upd old-src\nt\private\sdktools\qgrep -o%workdir%
+7z x -y %workdir%\%OLDSRC% old-src\nt\private\windows\media\avi\mciavi32\vfw16 old-src\nt\private\windows\inc\comctrlp.h old-src\nt\private\windows\inc\commdlgp.h old-src\nt\private\windows\inc\shlapip.h old-src\nt\private\windows\inc\prshtp.h old-src\nt\private\windows\inc\shlwapip.h old-src\nt\private\windows\inc\gdispool.h old-src\nt\private\windows\spooler\inc\splapip.h old-src\nt\public\oak\inc\winddiui.h old-src\nt\private\sdktools\jetadmin\inc\winioctl.h old-src\nt\private\sdktools\jetadmin\inc\dsound.h old-src\nt\public\oak\inc\compstui.h %WOW16% old-src\nt\private\mvdm\softpc.new\host\inc\alpha old-src\nt\private\mvdm\softpc.new\host\inc\mips old-src\nt\private\mvdm\softpc.new\host\inc\ppc old-src\nt\private\mvdm\dpmi old-src\nt\private\mvdm\dpmi32 old-src\nt\private\mvdm\inc\intmac.inc old-src\nt\private\mvdm\inc\dpmi.h old-src\nt\private\mvdm\tools16\implib.exe old-src\nt\private\mvdm\tools16\rc16.exe old-src\nt\private\mvdm\tools16\rcpp.exe old-src\tools\x86\idw\sednew.exe old-src\nt\private\sdktools\upd old-src\nt\private\sdktools\qgrep -o%workdir%
 if not exist %workdir%\old-src\nt\private\windows\inc\gdispool.h (
 echo Cannot expand %workdir%\old-src\nt\private\windows\inc\gdispool.h from %workdir%\%OLDSRC%
 echo Cannot continue.
 pause
 goto fini
 )
-
 move /y %workdir%\old-src\nt\private\windows\inc\gdispool.h %minntfix%\minnt\public\internal\base\inc\
 move /y %workdir%\old-src\nt\private\windows\spooler\inc\splapip.h %minntfix%\minnt\public\internal\base\inc\
 move /y %workdir%\old-src\nt\public\oak\inc\compstui.h %minntfix%\minnt\public\oak\inc\
 move /y %workdir%\old-src\nt\private\sdktools\jetadmin\inc\winioctl.h %minntfix%\minnt\public\sdk\inc\
 move /y %workdir%\old-src\nt\private\sdktools\jetadmin\inc\dsound.h %minntfix%\minnt\public\sdk\inc\
 move /y %workdir%\old-src\nt\public\oak\inc\winddiui.h %minntfix%\minnt\public\oak\inc\
+for %%a in (comctrlp.h commdlgp.h prshtp.h shlapip.h shlwapip.h) do move /y %workdir%\old-src\nt\private\windows\inc\%%~a %minntfix%\minnt\public\internal\shell\inc\
 echo #include "winddiui_xp.h" >>%minntfix%\minnt\public\oak\inc\winddiui.h
 
 
@@ -184,14 +192,60 @@ for %%I in (command debug edlin exe2bin graphics keyb loadfix mem nlsfunc setver
   xcopy /Y %minntfix%\minnt\base\mvdm\dos\v86\cmd\append\dirs %minntfix%\minnt\base\mvdm\dos\v86\cmd\%%I\
 )
 
+rem Copy Video for Windows to release template folder
+xcopy /e /y %workdir%\old-src\nt\private\windows\media\avi\mciavi32\vfw16 ..\release\vfw16\
+
 :oldsrcok
+rem -- Windows 7 ISO
+rem
+rem We could use old-src\nt\private\ole32\olethunk\ and compile it ourselves, but it's not up-to-date
+rem so it's better to take up-to-date binaries from Win7 ISO
+rem 
+set W7ISO=none
+if exist %workdir%\de_windows_7_professional_with_sp1_x86_dvd_u_677093.iso (
+  set W7ISO=%workdir%\de_windows_7_professional_with_sp1_x86_dvd_u_677093.iso
+  set W7SYSDIR=system32
+) else (
+  if exist %workdir%\de_windows_7_professional_with_sp1_x64_dvd_u_676919.iso (
+    set W7ISO=%workdir%\de_windows_7_professional_with_sp1_x64_dvd_u_676919.iso
+    set W7SYSDIR=SysWOW64
+  ) else (
+    if exist %workdir%\7601.24214.180801-1700.win7sp1_ldr_escrow_CLIENT_PROFESSIONAL_x86FRE_en-us.iso (
+      set W7ISO=%workdir%\7601.24214.180801-1700.win7sp1_ldr_escrow_CLIENT_PROFESSIONAL_x86FRE_en-us.iso
+      set W7SYSDIR=system32
+    )
+  )
+)
+if exist %W7ISO% (
+  echo Expanding working 16bit OLE DLLs from Win 7 ISO
+  7z x -y %W7ISO% sources\install.wim -o%workdir%
+  if exist %workdir%\sources\install.wim (
+    7z x -y %workdir%\sources\install.wim 1\Windows\%W7SYSDIR%\olethk32.dll 1\Windows\%W7SYSDIR%\compobj.dll 1\Windows\%W7SYSDIR%\ole2.dll 1\Windows\%W7SYSDIR%\ole2disp.dll 1\Windows\%W7SYSDIR%\ole2nls.dll 1\Windows\%W7SYSDIR%\storage.dll 1\Windows\%W7SYSDIR%\typelib.dll -o%workdir%
+    xcopy /e /y %workdir%\1\Windows\%W7SYSDIR% ..\release\ole2\
+  )
+)
+if not exist %workdir%\1\Windows\%W7SYSDIR%\olethk32.dll (
+  if "%NOWIN7%"=="" (
+    echo Windows 7 ISO was not found / OLE2 components could not be extracted
+    echo This may lead to problems on Windows Versions ^>= 8 when using OLE2 WOW32
+    echo applications. However, basic functionality is not affected.
+    echo If you want to continue without OLE2 support, press any key now, otherwise
+    echo abort with CTRL+C, download the Windows 7 Professional 32bit ISO
+    echo de_windows_7_professional_with_sp1_x86_dvd_u_677093.iso and start over again.
+    start https://winfuture.de/downloadvorschalt,3291.html
+    pause
+  )
+)
+:prepared
+
+
 echo The patch directory is now prepared. You may delete the contents of the 
 echo of the %workdir% directory now.
 if not "%1"=="batch" pause
 goto fini
 
 :expandf
-expand %1 -F:%2 %workdir%
+%systemroot%\system32\expand %1 -F:%2 %workdir%
 if not exist %workdir%\%2 (
 echo Cannot expand %2 from %1. 
 echo Cannot continue.

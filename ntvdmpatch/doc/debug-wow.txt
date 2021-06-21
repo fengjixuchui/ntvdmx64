@@ -2,15 +2,29 @@ Debugging WOW applications
 ==========================
 
 ntsd contains a useful extension for debugging WOW problems.
-Although you can of course debug the ntvdm using yoda, some specific WOW
-commands may become handy for i.e. finding exceptions.
+You need a checked build for debugging.
+NTVDM has a Windbg/ntsd extension for debugging WOW applications called
+vdmexts.dll, which  may become handy for i.e. finding exceptions.
+They are inteded for NTSD, however I feel more comfortable using YODA as the
+NTVDM debugger, therefore it is now also possible to use there extensions with
+YODA (preferred).
+
+So the instructions depend on what debugger you prefer.
+
+VDMEXTS WITH NTSD/CDB
+=====================
 This requires some preparation first:
 
 1) Install debug symbols for NTVDM and NTVDMD so that WinDBG can find the
    required symbols:
 
+   To facilitate the process, just run inst-sym.cmd from NTVDM installation
+   root to install all debugging symbols of your NTVDM version.
+
+   Manual copy of necessary smybols would be:
    copy Binaries\x86chk\Symbols\retail\exe\ntvdm.pdb %systemroot%\SysWOW64\
    copy Binaries\x86chk\Symbols\retail\dll\ntvdmd.pdb %systemroot%\SysWOW64\
+
 
 2) Install x86 Debugging Tools for Windows (Windbg), if you haven't yet.
    Can be found in GRMWDK_EN_7600_1.ISO that you downloaded to build NTVDMx64
@@ -30,7 +44,11 @@ This requires some preparation first:
    mkdir c:\WINDBG\vdm
    copy Binaries\x86chk\dbg\files\bin\winxp\vdmexts.dll c:\WINDBG\vdm\
 
-4) Upon debugging, you need to load the correct extension, so you need to
+4) Start debugger, i.e. 
+
+   cdb myapp.exe
+
+   Upon debugging, you need to load the correct extension, so you need to
    specify with pathname:
 
    !vdm\vdmexts.load
@@ -41,3 +59,126 @@ This requires some preparation first:
    Enable break on each module load:
    !vdm\vdmexts.sxe cw
 
+Don't ask me on how to debug and step within a DOS application with it, 
+though. 
+
+
+VDMEXTS WITH YODA
+=================
+The extensions may be limited in YODA, as they were designed for NTSD, but
+anyway, you can mostly use them:
+
+This requires some preparation first:
+
+1) copy Binaries\x86chk\dbg\files\bin\winxp\vdmexts.dll %SYSTEMROOT%\SysWOW64\
+
+   To facilitate the process, just run inst-sym.cmd from NTVDM installation
+   root to install all debugging symbols of your NTVDM version and vdmexts.dll.  
+
+
+To debug:
+*) Enter YODA. There you can issue the vdmdbg extensions by starting your 
+   command with a dot, i.e.:
+
+   .help
+
+Note that yoda will switch its disassembly output to VDMEXT's view once
+you entered any vdmext command (i.e. .r). This has the advantage that 
+disassembler uses symbol lookup, if a .sym file is present, or it at least
+tells you which module you are currently in, if it recognizes its segment.
+However it has the disadvantage, that it's slow.
+To list available segments and their modules, ouy can use:
+
+.lm   - To display Win16 modules (if any)
+.lm 0 - To display DOS modules
+
+When setting breakpoints with .bp, you can give a symbol name, given that
+the .sym files for the application are installed (copied to SysWOW64 
+directory). Note that - in contrary to what you are maybe used to with
+ntsd - the symbol name has to be without its module prefix, so i.e. just:
+
+.bp SendMessage
+
+
+
+Tracing WOW applications
+========================
+Using Debugger
+--------------
+Of course, you need a checked build for debugging.
+If you want to trace using debugger extensions mentioned above, just use the 
+commands (add !vdm\vdmexts prefix to it if useing ntsd):
+
+.setloglevel <loglevel>
+
+and if you want to log to a file, additionally use the command:
+
+.logfile <WOW logfile>
+
+If you want to filter logs for specific modules, use the
+
+.filter 
+
+command.
+
+
+Standalone without debugger
+---------------------------
+In case you don't want to use the debugger and just let it trace, you can
+set the environment variables before launching your application:
+
+set WOWLOGLVL=<Loglevel>
+
+Set to 16, if you want to log everything.
+The debug output will be written to the system debug console, so you can use
+DebugView to check it. If you prefer to log to a file, additionally set:
+
+set WOWTRACE=<Logfile>
+
+If you want to not filter specific modules, you can set the filter mask with
+
+set WOWLOGFILTER=<Filter>
+
+Loglevels
+---------
+This list is not accurate, it's just important to know how you can turn off
+NTVDMx64's Syslevel Spamming by setting loglevel below 15.
+
+0	-	Always (so you cannot supress this output, Critical errors)
+1	-	Also Errors
+2	-	Also RegisterWindowMessage errors
+3	-	Also control messages, calling parameters
+4	-	Also Trace output
+5	-	Also callback errors, return from calls
+6	-	Also thunking, dib drawing information
+7	-	Also adding aliases to list, control thunking
+8	-	Also File IO control stuff (open, close..)
+9	-	Also Callbacks, unthunking...
+10	-	Also information from log filters set by filter command
+12	-	Also recycled handles, DDE thunking, file read/write, kernel tracing...
+13	-	Also aliasing hints
+14		Also all internal WOW kernel Calls
+15	-	Also NTVDMx64 specific: Enter/Leave Syslevel
+16	-	MAX the world (all 16 bit kernel internal calls
+
+
+Log filters
+-----------
+Taken from wow32.h, you should really use the debugger if possible, but in 
+case you don't want to, here are the relevant flags:
+
+#define FILTER_KERNEL   0x00000001
+#define FILTER_USER     0x00000002
+#define FILTER_GDI      0x00000004
+#define FILTER_KEYBOARD 0x00000008
+#define FILTER_SOUND    0x00000010
+#define FILTER_KERNEL16 0X00000020
+#define FILTER_MMEDIA   0x00000040
+#define FILTER_WINSOCK  0x00000080
+#define FILTER_COMMDLG  0x00000200
+#define FILTER_WINNLS   0x00000400
+#define FILTER_WIFEMAN  0x00000800
+
+#define FILTER_VERBOSE  0x00000100
+
+Note that all log filters are active by default
